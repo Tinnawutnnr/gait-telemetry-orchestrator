@@ -1,0 +1,37 @@
+# Version control
+.git
+.gitignore
+
+# CI/CD & IDE
+.github
+.vscode
+.idea
+
+# Python artifacts
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+dist
+build
+.mypy_cache
+.ruff_cache
+.pytest_cache
+htmlcov
+.coverage
+
+# Environment & secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Docker‑in‑Docker
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Documentation & misc
+*.md
+LICENSE
+docs/
