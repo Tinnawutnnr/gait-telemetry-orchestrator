@@ -8,7 +8,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    DATABASE_URL: str = "postgresql://postgres:changeme@localhost:5432/gait"
+    DATABASE_URL: str
 
 
 settings = Settings()
