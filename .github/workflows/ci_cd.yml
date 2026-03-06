@@ -43,6 +43,9 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://test:test@localhost:5432/gait_test
+      SECRET_KEY: ${{ secrets.SECRET_KEY }}
+      HASH_ALGORITHM: ${{ secrets.HASH_ALGORITHM }}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${{ secrets.ACCESS_TOKEN_EXPIRE_MINUTES }}
 
     steps:
       - name: Checkout
