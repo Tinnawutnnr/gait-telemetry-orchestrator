@@ -30,9 +30,7 @@ class User(Base):
     username: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
     hashed_password: Mapped[str] = mapped_column(String, nullable=False)
     role: Mapped[str] = mapped_column(String, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
@@ -40,9 +38,7 @@ class User(Base):
     caretaker: Mapped[Caretaker | None] = relationship(back_populates="user")
     patient: Mapped[Patient | None] = relationship(back_populates="user")
 
-    __table_args__ = (
-        CheckConstraint("role IN ('caretaker', 'patient')", name="ck_users_role"),
-    )
+    __table_args__ = (CheckConstraint("role IN ('caretaker', 'patient')", name="ck_users_role"),)
 
     def __repr__(self) -> str:
         return f"<User id={self.id} username={self.username!r} role={self.role!r}>"
@@ -79,12 +75,10 @@ class Patient(Base):
         nullable=True,
         index=True,
     )
-    caretaker_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("caretakers.id", ondelete="RESTRICT"), index=True
-    )
+    caretaker_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("caretakers.id", ondelete="RESTRICT"), index=True)
     first_name: Mapped[str] = mapped_column(String, nullable=False)
     last_name: Mapped[str] = mapped_column(String, nullable=False)
-    age: Mapped[int | None] = mapped_column(BigInteger)
+    age: Mapped[int | None] = mapped_column(Integer)
     height: Mapped[float] = mapped_column(Float, nullable=False)
     weight: Mapped[float] = mapped_column(Float, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
@@ -105,12 +99,8 @@ class WindowReport(Base):
     __tablename__ = "window_reports"
 
     window_report_id: Mapped[str] = mapped_column(String, primary_key=True)
-    patient_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("patients.id"), index=True
-    )
-    timestamp: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), index=True
-    )
+    patient_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("patients.id"), index=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     status: Mapped[str | None] = mapped_column(String)
     gait_health: Mapped[str | None] = mapped_column(String)
@@ -151,9 +141,7 @@ class DailyAverage(Base):
     __tablename__ = "daily_averages"
 
     daily_report_id: Mapped[str] = mapped_column(String, primary_key=True)
-    patient_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("patients.id")
-    )
+    patient_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("patients.id"))
     report_date: Mapped[date] = mapped_column(Date)
 
     total_windows_analyzed: Mapped[int | None] = mapped_column(Integer)
@@ -171,9 +159,7 @@ class DailyAverage(Base):
 
     patient: Mapped[Patient] = relationship(back_populates="daily_averages")
 
-    __table_args__ = (
-        Index("ix_daily_averages_patient_date", "patient_id", "report_date"),
-    )
+    __table_args__ = (Index("ix_daily_averages_patient_date", "patient_id", "report_date"),)
 
     def __repr__(self) -> str:
         return f"<DailyAverage id={self.daily_report_id!r} date={self.report_date}>"
@@ -189,12 +175,8 @@ class AnomalyLog(Base):
         unique=True,
         index=True,
     )
-    patient_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("patients.id"), index=True
-    )
-    timestamp: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), index=True
-    )
+    patient_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("patients.id"), index=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     anomaly_score: Mapped[float | None] = mapped_column(Float)
     root_cause_feature: Mapped[str | None] = mapped_column(String)
