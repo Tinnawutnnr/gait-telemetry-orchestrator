@@ -16,4 +16,4 @@ def get_db() -> Generator[Session, None, None]:
     try:
         yield db
     finally:
-        db.close() # Prevents connection leaks
+        db.close()  # Prevents connection leaks
