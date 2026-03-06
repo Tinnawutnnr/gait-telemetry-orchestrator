@@ -19,6 +19,10 @@ select = [
 ]
 ignore = ["S101"]  # allow assert in tests
 
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+force-sort-within-sections = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
