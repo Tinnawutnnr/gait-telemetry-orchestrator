@@ -10,5 +10,10 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str
 
+    # Authentication
+    SECRET_KEY: str
+    HASH_ALGORITHM: str
+    ACCESS_TOKEN_EXPIRE_MINUTES: int
+
 
 settings = Settings()

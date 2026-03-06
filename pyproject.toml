@@ -17,7 +17,10 @@ select = [
     "UP",  # pyupgrade
     "S",   # flake8-bandit (security)
 ]
-ignore = ["S101"]  # allow assert in tests
+ignore = [
+    "S101",  # allow assert in tests
+    "B008",  # allow Depends() in function defaults (FastAPI pattern)
+]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]
