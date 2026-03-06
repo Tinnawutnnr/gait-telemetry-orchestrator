@@ -50,7 +50,7 @@ def upgrade() -> None:
         sa.Column("caretaker_id", sa.BigInteger(), nullable=False),
         sa.Column("first_name", sa.String(), nullable=False),
         sa.Column("last_name", sa.String(), nullable=False),
-        sa.Column("age", sa.BigInteger(), nullable=True),
+        sa.Column("age", sa.Integer(), nullable=True),
         sa.Column("height", sa.Float(), nullable=False),
         sa.Column("weight", sa.Float(), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
