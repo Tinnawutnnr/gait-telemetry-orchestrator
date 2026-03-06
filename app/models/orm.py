@@ -159,7 +159,7 @@ class DailyAverage(Base):
 
     patient: Mapped[Patient] = relationship(back_populates="daily_averages")
 
-    __table_args__ = (Index("ix_daily_averages_patient_date", "patient_id", "report_date",unique=True),)
+    __table_args__ = (Index("ix_daily_averages_patient_date", "patient_id", "report_date", unique=True),)
 
     def __repr__(self) -> str:
         return f"<DailyAverage id={self.daily_report_id!r} date={self.report_date}>"
@@ -175,7 +175,7 @@ class AnomalyLog(Base):
         unique=True,
         index=True,
     )
-    patient_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("patients.id"), index=True)
+    patient_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("patients.id", ondelete="RESTRICT"), index=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     anomaly_score: Mapped[float | None] = mapped_column(Float)
