@@ -159,7 +159,7 @@ class DailyAverage(Base):
 
     patient: Mapped[Patient] = relationship(back_populates="daily_averages")
 
-    __table_args__ = (Index("ix_daily_averages_patient_date", "patient_id", "report_date"),)
+    __table_args__ = (Index("ix_daily_averages_patient_date", "patient_id", "report_date",unique=True),)
 
     def __repr__(self) -> str:
         return f"<DailyAverage id={self.daily_report_id!r} date={self.report_date}>"
