@@ -75,7 +75,9 @@ class Patient(Base):
         nullable=True,
         index=True,
     )
-    caretaker_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("caretakers.id", ondelete="RESTRICT"), index=True)
+    caretaker_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("caretakers.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     first_name: Mapped[str] = mapped_column(String, nullable=False)
     last_name: Mapped[str] = mapped_column(String, nullable=False)
     age: Mapped[int | None] = mapped_column(Integer)
@@ -86,7 +88,7 @@ class Patient(Base):
     )
 
     user: Mapped[User | None] = relationship(back_populates="patient")
-    caretaker: Mapped[Caretaker] = relationship(back_populates="patients")
+    caretaker: Mapped[Caretaker | None] = relationship(back_populates="patients")
     window_reports: Mapped[list[WindowReport]] = relationship(back_populates="patient")
     daily_averages: Mapped[list[DailyAverage]] = relationship(back_populates="patient")
     anomaly_logs: Mapped[list[AnomalyLog]] = relationship(back_populates="patient")
