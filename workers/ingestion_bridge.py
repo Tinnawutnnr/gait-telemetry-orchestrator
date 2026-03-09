@@ -21,6 +21,7 @@ logging.basicConfig(
 )
 log = logging.getLogger("ingestion_bridge")
 
+
 # Configuration
 def _get_int_env(name: str, default: int) -> int:
     # Safely parse an integer environment variable, falling back to default on error.
@@ -37,6 +38,7 @@ def _get_int_env(name: str, default: int) -> int:
             default,
         )
         return default
+
 
 REDIS_URL: str = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 
