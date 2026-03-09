@@ -22,8 +22,11 @@ services:
   redis-insight:
     image: redis/redisinsight:2.58
     container_name: gait_redis_insight
+    restart: unless-stopped
     ports:
       - "5540:5540"
+    volumes:
+      - redisinsight_data:/db
     networks:
       - gait_net
 
