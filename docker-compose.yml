@@ -35,6 +35,7 @@ services:
     command: ["python", "-m", "workers.ingestion_bridge"]
     env_file: .env
     environment:
+      SKIP_MIGRATIONS:   "true"
       REDIS_URL:         ${REDIS_URL:-redis://redis:6379/0}
       MQTT_BROKER:       ${MQTT_BROKER}
       MQTT_PORT:         ${MQTT_PORT:-8883}
