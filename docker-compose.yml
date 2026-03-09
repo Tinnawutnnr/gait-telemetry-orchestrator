@@ -1,4 +1,58 @@
 services:
+  # ── Redis Alpine ─────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: gait_redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --maxmemory      ${REDIS_MAXMEMORY:-256mb}
+      --maxmemory-policy allkeys-lru
+      --save           ""
+      --appendonly     no
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - gait_net
+  redis-insight:
+    image: redis/redisinsight:2.58
+    container_name: gait_redis_insight
+    restart: unless-stopped
+    ports:
+      - "5540:5540"
+    volumes:
+      - redisinsight_data:/db
+    networks:
+      - gait_net
+
+  # ── Ingestion Bridge ─────────────────────────────────────────────────────
+  ingestion_bridge:
+    build: .
+    container_name: gait_ingestion_bridge
+    restart: unless-stopped
+    command: ["python", "-m", "workers.ingestion_bridge"]
+    env_file: .env
+    environment:
+      SKIP_MIGRATIONS:   "true"
+      REDIS_URL:         ${REDIS_URL:-redis://redis:6379/0}
+      MQTT_BROKER:       ${MQTT_BROKER}
+      MQTT_PORT:         ${MQTT_PORT:-8883}
+      MQTT_USERNAME:     ${MQTT_USERNAME}
+      MQTT_PASSWORD:     ${MQTT_PASSWORD}
+      MQTT_USE_TLS:      ${MQTT_USE_TLS:-true}
+      MQTT_QOS:          ${MQTT_QOS:-1}
+      STREAM_MAXLEN:     ${STREAM_MAXLEN:-1000}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - gait_net
+  # ── PostgreSQL ────────────────────────────────────────────────────────────
   db:
     image: postgres:16-alpine
     container_name: gait_postgres
@@ -17,6 +71,12 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    networks:
+      - gait_net
+
+networks:
+  gait_net:
+    driver: bridge
 
 volumes:
   pgdata:
