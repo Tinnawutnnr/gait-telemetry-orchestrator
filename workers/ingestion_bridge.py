@@ -128,7 +128,13 @@ async def _xadd(redis: Redis, user_id: str, raw_payload: bytes) -> None:
 
 # Core bridge coroutine
 async def _run_bridge() -> None:
-    redis: Redis = await _connect_redis()
+    redis: Redis | None = None
+    try:
+        redis = await _connect_redis()
+    except asyncio.CancelledError:
+        log.info("Shutdown requested before Redis connected — exiting cleanly")
+        return
+
     redis_reconnect_delay = _BACKOFF_BASE
 
     mqtt_reconnect_delay = _BACKOFF_BASE
@@ -234,10 +240,11 @@ async def _run_bridge() -> None:
             mqtt_reconnect_delay = min(mqtt_reconnect_delay * _BACKOFF_FACTOR, _BACKOFF_CAP)
 
     log.info("Bridge coroutine exiting cleanly")
-    try:
-        await redis.aclose()
-    except Exception:  # noqa: BLE001, S110
-        pass
+    if redis is not None:
+        try:
+            await redis.aclose()
+        except Exception:  # noqa: BLE001, S110
+            pass
 
 
 # Entry point
