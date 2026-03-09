@@ -37,7 +37,7 @@ def _get_int_env(name: str, default: int) -> int:
             default,
         )
         return default
-    
+
 REDIS_URL: str = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 
 MQTT_BROKER: str = os.environ.get("MQTT_BROKER", "localhost")
@@ -75,12 +75,23 @@ def _on_shutdown_signal(sig: signal.Signals) -> None:
     _shutdown_event.set()
 
 
+async def _interruptible_sleep(delay: float) -> bool:
+    # Sleep up to *delay* seconds. Return True immediately if shutdown is requested.
+    try:
+        await asyncio.wait_for(_shutdown_event.wait(), timeout=delay)
+        return True
+    except TimeoutError:
+        return False
+
+
 # Redis helper
 async def _connect_redis() -> Redis:
     # Return a connected Redis client, retrying with exponential backoff.
     delay = _BACKOFF_BASE
     attempt = 0
     while True:
+        if _shutdown_event.is_set():
+            raise asyncio.CancelledError("Shutdown requested during Redis connection")
         attempt += 1
         try:
             client: Redis = Redis.from_url(REDIS_URL, decode_responses=False)
@@ -89,7 +100,8 @@ async def _connect_redis() -> Redis:
             return client
         except RedisError as exc:
             log.error("Redis connection failed (attempt %d): %s — retrying in %.1fs", attempt, exc, delay)
-        await asyncio.sleep(delay)
+        if await _interruptible_sleep(delay):
+            raise asyncio.CancelledError("Shutdown requested during Redis connection")
         delay = min(delay * _BACKOFF_FACTOR, _BACKOFF_CAP)
 
 
@@ -139,8 +151,13 @@ async def _run_bridge() -> None:
                 await client.subscribe(MQTT_TOPIC, qos=MQTT_QOS)
                 mqtt_reconnect_delay = _BACKOFF_BASE  # reset on success
 
-                async for message in client.messages:
-                    if _shutdown_event.is_set():
+                msg_iter = client.messages.__aiter__()
+                while not _shutdown_event.is_set():
+                    try:
+                        message = await asyncio.wait_for(msg_iter.__anext__(), timeout=1.0)
+                    except TimeoutError:
+                        continue
+                    except StopAsyncIteration:
                         break
 
                     topic_str: str = str(message.topic)
@@ -176,13 +193,23 @@ async def _run_bridge() -> None:
                                 exc,
                                 redis_reconnect_delay,
                             )
-                            await asyncio.sleep(redis_reconnect_delay)
+                            if _shutdown_event.is_set():
+                                log.warning("Shutdown requested during Redis retry. Breaking loop.")
+                                break
+
+                            if await _interruptible_sleep(redis_reconnect_delay):
+                                log.warning("Shutdown during Redis retry sleep. Breaking loop.")
+                                break
                             redis_reconnect_delay = min(redis_reconnect_delay * _BACKOFF_FACTOR, _BACKOFF_CAP)
                             try:
                                 await redis.aclose()
                             except Exception:  # noqa: BLE001, S110
                                 pass
                             redis = await _connect_redis()
+
+        except asyncio.CancelledError:
+            log.info("Bridge cancelled — shutting down")
+            break
 
         except aiomqtt.MqttError as exc:
             if _shutdown_event.is_set():
@@ -192,7 +219,8 @@ async def _run_bridge() -> None:
                 exc,
                 mqtt_reconnect_delay,
             )
-            await asyncio.sleep(mqtt_reconnect_delay)
+            if await _interruptible_sleep(mqtt_reconnect_delay):
+                break
             mqtt_reconnect_delay = min(mqtt_reconnect_delay * _BACKOFF_FACTOR, _BACKOFF_CAP)
 
     log.info("Bridge coroutine exiting cleanly")
