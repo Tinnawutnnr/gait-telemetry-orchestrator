@@ -22,19 +22,35 @@ logging.basicConfig(
 log = logging.getLogger("ingestion_bridge")
 
 # Configuration
+def _get_int_env(name: str, default: int) -> int:
+    # Safely parse an integer environment variable, falling back to default on error.
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        log.error(
+            "Invalid integer value for environment variable %s=%r; using default %d",
+            name,
+            raw,
+            default,
+        )
+        return default
+    
 REDIS_URL: str = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 
 MQTT_BROKER: str = os.environ.get("MQTT_BROKER", "localhost")
-MQTT_PORT: int = int(os.environ.get("MQTT_PORT", "8883"))
+MQTT_PORT: int = _get_int_env("MQTT_PORT", 8883)
 MQTT_USERNAME: str | None = os.environ.get("MQTT_USERNAME")
 MQTT_PASSWORD: str | None = os.environ.get("MQTT_PASSWORD")
 MQTT_USE_TLS: bool = os.environ.get("MQTT_USE_TLS", "true").lower() in {"1", "true", "yes"}
 
 MQTT_TOPIC: str = "gait/telemetry/+"
-MQTT_QOS: int = int(os.environ.get("MQTT_QOS", "1"))
+MQTT_QOS: int = _get_int_env("MQTT_QOS", 1)
 
 # Redis Stream tuning
-STREAM_MAXLEN: int = int(os.environ.get("STREAM_MAXLEN", "1000"))
+STREAM_MAXLEN: int = _get_int_env("STREAM_MAXLEN", 1000)
 # Approximate trimming (~) trades strict accuracy for much better write throughput
 STREAM_MAXLEN_APPROX: bool = True
 
