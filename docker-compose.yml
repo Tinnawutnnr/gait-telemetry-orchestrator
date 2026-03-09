@@ -80,3 +80,4 @@ networks:
 
 volumes:
   pgdata:
+  redisinsight_data:
