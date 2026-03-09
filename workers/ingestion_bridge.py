@@ -7,6 +7,7 @@ import signal
 import ssl
 import sys
 from typing import NoReturn
+from urllib.parse import urlparse
 
 import aiomqtt
 from redis.asyncio import Redis
@@ -41,6 +42,13 @@ def _get_int_env(name: str, default: int) -> int:
 
 
 REDIS_URL: str = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+
+
+def _redact_url(url: str) -> str:
+    # Return host:port/db with credentials stripped.
+    parsed = urlparse(url)
+    return f"{parsed.hostname}:{parsed.port or 6379}/{parsed.path.lstrip('/')}"
+
 
 MQTT_BROKER: str = os.environ.get("MQTT_BROKER", "localhost")
 MQTT_PORT: int = _get_int_env("MQTT_PORT", 8883)
@@ -98,7 +106,7 @@ async def _connect_redis() -> Redis:
         try:
             client: Redis = Redis.from_url(REDIS_URL, decode_responses=False)
             await client.ping()
-            log.info("Redis connected (attempt %d): %s", attempt, REDIS_URL)
+            log.info("Redis connected (attempt %d): %s", attempt, _redact_url(REDIS_URL))
             return client
         except RedisError as exc:
             log.error("Redis connection failed (attempt %d): %s — retrying in %.1fs", attempt, exc, delay)
