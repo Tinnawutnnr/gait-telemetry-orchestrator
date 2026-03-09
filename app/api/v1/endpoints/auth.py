@@ -27,7 +27,7 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)) -> Token:
     db.commit()
     db.refresh(user)
 
-    token = create_access_token({"sub": user.id, "role": user.role})
+    token = create_access_token({"sub": str(user.id), "role": user.role})
     return Token(access_token=token)
 
 
@@ -42,5 +42,5 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    token = create_access_token({"sub": user.id, "role": user.role})
+    token = create_access_token({"sub": str(user.id), "role": user.role})
     return Token(access_token=token)
