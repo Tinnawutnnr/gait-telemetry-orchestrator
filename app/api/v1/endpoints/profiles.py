@@ -103,6 +103,7 @@ def update_profile(
             detail="Failed to update profile due to a database error.",
         ) from e
 
+
 @router.get("/me", response_model=PatientProfile | CaretakerProfile, status_code=status.HTTP_200_OK)
 def get_profile(
     current_user: User = Depends(get_current_user),

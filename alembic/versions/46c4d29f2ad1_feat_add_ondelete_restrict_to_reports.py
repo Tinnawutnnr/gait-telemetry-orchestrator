@@ -35,6 +35,6 @@ def downgrade() -> None:
     op.create_index(
         op.f("ix_daily_averages_patient_date"), "daily_averages", ["patient_id", "report_date"], unique=False
     )
-    op.drop_constraint(None, "anomaly_logs", type_="foreignkey")
+    op.drop_constraint(op.f("anomaly_logs_patient_id_fkey"), "anomaly_logs", type_="foreignkey")
     op.create_foreign_key(op.f("anomaly_logs_patient_id_fkey"), "anomaly_logs", "patients", ["patient_id"], ["id"])
     # ### end Alembic commands ###

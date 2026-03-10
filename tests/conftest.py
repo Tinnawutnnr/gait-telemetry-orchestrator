@@ -1,17 +1,26 @@
+import os
+
+from alembic.config import Config
 from httpx import ASGITransport, AsyncClient
 import pytest
 import pytest_asyncio
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
+from sqlalchemy.pool import NullPool
 
-from app.core.config import settings
+from alembic import command
 from app.core.database import get_db
 from app.core.security import create_access_token, hash_password
 from app.main import app
-from app.models.orm import Base, User
+from app.models.orm import User
 
-# create an engine for the test database; use connection pooling with pre-ping to avoid stale connections
-_engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)
+_test_db_url = os.getenv("TEST_DATABASE_URL")
+if not _test_db_url or "gait_test" not in _test_db_url.lower():
+    pytest.exit(
+        "CRITICAL ERROR: 'TEST_DATABASE_URL' is missing or does not contain the word 'gait_test'. "
+        "Running tests against a production or dev database is strictly prohibited to prevent data loss."
+    )
+_engine = create_engine(_test_db_url, poolclass=NullPool)
 
 # Reusable constants for test users
 TEST_PASSWORD: str = "secureP@ss123"  # noqa: S105
@@ -19,18 +28,20 @@ CARETAKER_USERNAME: str = "caretaker_jane"
 PATIENT_USERNAME: str = "patient_john"
 
 
-# ── Schema lifecycle (once per session, on-demand) ───────────────────────────
+# ── Schema lifecycle (once per session, via Alembic) ─────────────────────────
 @pytest.fixture(scope="session")
-def _create_tables():
-    # Create all ORM tables; drop them after the session finishes.
-    Base.metadata.create_all(bind=_engine)
+def _apply_migrations():
+    # Run the real migration chain so tests validate the same schema path as production.
+    os.environ["ALEMBIC_TARGET_ENV"] = "test"
+    cfg = Config("alembic.ini")
+    command.upgrade(cfg, "head")
     yield
-    Base.metadata.drop_all(bind=_engine)
+    command.downgrade(cfg, "base")
 
 
 # ── Per-test transactional isolation ─────────────────────────────────────────
 @pytest.fixture()
-def db_session(_create_tables):
+def db_session(_apply_migrations):
     # Yield a Session wrapped in a savepoint; rolls back after the test (doesn't commit to the DB).
     connection = _engine.connect()
     transaction = connection.begin()
