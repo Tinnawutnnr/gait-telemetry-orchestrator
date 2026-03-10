@@ -2,7 +2,6 @@ from httpx import AsyncClient
 from sqlalchemy.orm import Session
 
 from app.models.orm import Caretaker, Patient, User
-from tests.conftest import patient_client
 
 # ── Endpoint URLs ────────────────────────────────────────────────────────────
 _STATUS = "/api/v1/profiles/me/status"
@@ -39,8 +38,12 @@ class TestProfileStatus:
         assert body["role"] == "patient"
         assert body["has_profile"] is False
 
-    async def test_patient_with_profile_returns_true(self, patient_client: AsyncClient, patient_user: User, db_session: Session) -> None:
-        db_session.add(Patient(user_id=patient_user.id, first_name="John", last_name="Smith", age=30, height=175.0, weight=70.0))
+    async def test_patient_with_profile_returns_true(
+        self, patient_client: AsyncClient, patient_user: User, db_session: Session
+    ) -> None:
+        db_session.add(
+            Patient(user_id=patient_user.id, first_name="John", last_name="Smith", age=30, height=175.0, weight=70.0)
+        )
         db_session.flush()
 
         resp = await patient_client.get(_STATUS)

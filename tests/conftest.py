@@ -64,7 +64,7 @@ def test_user(db_session: Session) -> User:
 
 @pytest.fixture()
 def patient_user(db_session: Session) -> User:
-    
+
     # A persisted patient user with a known password.
     user = User(
         username=PATIENT_USERNAME,
