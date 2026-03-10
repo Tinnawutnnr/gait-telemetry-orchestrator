@@ -12,7 +12,7 @@ _LOGIN = "/api/v1/auth/login"
 # Register
 # ══════════════════════════════════════════════════════════════════════════════
 class TestRegister:
-    # POST /api/v1/auth/register — identity-only provisioning."""
+    # POST /api/v1/auth/register — identity-only provisioning.
 
     async def test_caretaker_returns_201_with_bearer_token(self, client: AsyncClient) -> None:
         resp = await client.post(
