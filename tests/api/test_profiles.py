@@ -24,7 +24,13 @@ class TestProfileStatus:
     async def test_with_profile_returns_true(
         self, authorized_client: AsyncClient, test_user, db_session: Session
     ) -> None:
-        db_session.add(Caretaker(user_id=test_user.id, first_name="Jane", last_name="Doe"))
+        db_session.add(
+            Caretaker(
+            user_id=test_user.id, 
+            first_name="Jane", 
+            last_name="Doe"
+            )
+        )
         db_session.flush()
 
         resp = await authorized_client.get(_STATUS)
@@ -42,7 +48,14 @@ class TestProfileStatus:
         self, patient_client: AsyncClient, patient_user: User, db_session: Session
     ) -> None:
         db_session.add(
-            Patient(user_id=patient_user.id, first_name="John", last_name="Smith", age=30, height=175.0, weight=70.0)
+            Patient(
+                user_id=patient_user.id,
+                first_name="John", 
+                last_name="Smith", 
+                age=30, 
+                height=175.0, 
+                weight=70.0
+                )
         )
         db_session.flush()
 
