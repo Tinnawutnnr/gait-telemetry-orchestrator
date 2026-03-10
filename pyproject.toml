@@ -23,9 +23,10 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["app"]
+known-first-party = ["app", "tests"]
 force-sort-within-sections = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+asyncio_mode = "auto"
