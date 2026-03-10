@@ -62,6 +62,7 @@ def create_profile(
             detail="Failed to provision profile due to a database error.",
         ) from e
 
+
 @router.put("/me", response_model=ProfileResponse, status_code=status.HTTP_200_OK)
 def update_profile(
     body: CaretakerProfile | PatientProfile,
