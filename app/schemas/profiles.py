@@ -7,14 +7,18 @@ class ProfileStatus(BaseModel):
 
 
 class CaretakerProfile(BaseModel):
+    model_config = {"extra": "forbid"}
+
     first_name: str = Field(min_length=1, max_length=100)
     last_name: str = Field(min_length=1, max_length=100)
 
 
 class PatientProfile(BaseModel):
+    model_config = {"extra": "forbid"}
+
     first_name: str = Field(min_length=1, max_length=100)
     last_name: str = Field(min_length=1, max_length=100)
-    age: int | None = Field(default=None, ge=0, le=150)
+    age: int = Field(ge=0, le=150)
     height: float = Field(gt=0)
     weight: float = Field(gt=0)
 
