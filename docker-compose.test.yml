@@ -1,0 +1,60 @@
+# =============================================================================
+# Usage:
+#   docker compose -f docker-compose.test.yml up -d --wait
+#
+# Teardown:
+#   docker compose -f docker-compose.test.yml down
+#
+# Note: Test Postgres uses tmpfs — data is wiped automatically on container
+#       stop. No need for `down -v`.
+# =============================================================================
+
+services:
+  # ── Test PostgreSQL ──────────────────────────────────────────────────────
+  db_test:
+    image: postgres:16-alpine
+    container_name: gait_postgres_test
+    env_file: .env.test
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: test_only_password
+      POSTGRES_DB: gait_test
+    ports:
+      - "5433:5432"
+    volumes:
+      - type: tmpfs
+        target: /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 2s
+      retries: 10
+      start_period: 5s
+    networks:
+      - gait_test_net
+
+  # ── Test Redis ───────────────────────────────────────────────────────────
+  redis_test:
+    image: redis:7-alpine
+    container_name: gait_redis_test
+    env_file: .env.test
+    command: >
+      redis-server
+      --maxmemory      64mb
+      --maxmemory-policy allkeys-lru
+      --save           ""
+      --appendonly     no
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 2s
+      retries: 10
+      start_period: 3s
+    networks:
+      - gait_test_net
+
+networks:
+  gait_test_net:
+    driver: bridge

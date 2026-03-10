@@ -23,12 +23,12 @@ def get_current_user(
     )
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.HASH_ALGORITHM])
-        user_id: int | None = payload.get("sub")
+        sub: str | None = payload.get("sub")
         role: str | None = payload.get("role")
-        if user_id is None or role is None:
+        if sub is None or role is None:
             raise credentials_exception
-        token_data = TokenData(user_id=user_id, role=role)
-    except JWTError:
+        token_data = TokenData(user_id=int(sub), role=role)
+    except (JWTError, ValueError):
         raise credentials_exception from None
 
     user = db.get(User, token_data.user_id)
