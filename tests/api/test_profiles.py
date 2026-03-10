@@ -126,7 +126,9 @@ class TestGetProfile:
         assert body["first_name"] == "Jane"
         assert body["last_name"] == "Doe"
 
-    async def test_patient_returns_200(self, patient_client: AsyncClient, patient_user: User, db_session: Session) -> None:
+    async def test_patient_returns_200(
+        self, patient_client: AsyncClient, patient_user: User, db_session: Session
+    ) -> None:
         db_session.add(
             Patient(user_id=patient_user.id, first_name="John", last_name="Smith", age=30, height=175.0, weight=70.0)
         )
