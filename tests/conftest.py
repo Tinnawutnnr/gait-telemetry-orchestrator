@@ -42,13 +42,25 @@ def _apply_migrations():
 # ── Per-test transactional isolation ─────────────────────────────────────────
 @pytest.fixture()
 def db_session(_apply_migrations):
-    # Yield a Session wrapped in a savepoint; rolls back after the test (doesn't commit to the DB).
+    # Every test runs inside an outer transaction that is rolled back at the end.
+    # The test thread and the FastAPI threadpool each get their own Session
+    # to avoid cross-thread Session sharing, but both are bound to the same
+    # connection/transaction so the rollback reverts all changes.
     connection = _engine.connect()
     transaction = connection.begin()
-    session = Session(bind=connection, join_transaction_mode="create_savepoint")
 
-    # Wire FastAPI to use this session for the duration of the test
-    app.dependency_overrides[get_db] = lambda: session
+    # Override: each request gets a fresh Session on the shared connection.
+    def _override_get_db():
+        req_session = Session(bind=connection, join_transaction_mode="create_savepoint")
+        try:
+            yield req_session
+        finally:
+            req_session.close()
+
+    app.dependency_overrides[get_db] = _override_get_db
+
+    # Separate session for test-side setup and assertions.
+    session = Session(bind=connection, join_transaction_mode="create_savepoint")
 
     yield session
 
