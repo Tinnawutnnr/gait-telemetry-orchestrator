@@ -102,3 +102,26 @@ def update_profile(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update profile due to a database error.",
         ) from e
+
+@router.get("/me", response_model=PatientProfile | CaretakerProfile, status_code=status.HTTP_200_OK)
+def get_profile(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> CaretakerProfile | PatientProfile:
+    if current_user.role == "caretaker":
+        profile = db.scalar(select(Caretaker).where(Caretaker.user_id == current_user.id))
+        if profile is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
+        return CaretakerProfile(first_name=profile.first_name, last_name=profile.last_name)
+
+    else:
+        profile = db.scalar(select(Patient).where(Patient.user_id == current_user.id))
+        if profile is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
+        return PatientProfile(
+            first_name=profile.first_name,
+            last_name=profile.last_name,
+            age=profile.age,
+            height=profile.height,
+            weight=profile.weight,
+        )
