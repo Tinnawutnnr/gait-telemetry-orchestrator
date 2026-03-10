@@ -6,12 +6,12 @@ class ProfileStatus(BaseModel):
     role: str
 
 
-class CaretakerProfileCreate(BaseModel):
+class CaretakerProfile(BaseModel):
     first_name: str = Field(min_length=1, max_length=100)
     last_name: str = Field(min_length=1, max_length=100)
 
 
-class PatientProfileCreate(BaseModel):
+class PatientProfile(BaseModel):
     first_name: str = Field(min_length=1, max_length=100)
     last_name: str = Field(min_length=1, max_length=100)
     age: int | None = Field(default=None, ge=0, le=150)
