@@ -15,13 +15,12 @@ from redis.exceptions import RedisError
 
 # Structured logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.info,
     format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
     datefmt="%Y-%m-%dT%H:%M:%S",
     stream=sys.stdout,
 )
 log = logging.getLogger("ingestion_bridge")
-
 
 # Configuration
 def _get_int_env(name: str, default: int) -> int:
@@ -68,6 +67,7 @@ STREAM_MAXLEN_APPROX: bool = True
 _BACKOFF_BASE: float = 1.0
 _BACKOFF_CAP: float = 60.0
 _BACKOFF_FACTOR: float = 2.0
+MAX_MQTT_RETRIES: int = 5
 
 
 # Shutdown coordination
@@ -145,6 +145,10 @@ async def _run_bridge() -> None:
         tls_context = ssl.create_default_context()
 
     while not _shutdown_event.is_set():
+        if mqtt_attempt >= MAX_MQTT_RETRIES:
+            log.error("Critical: Failed to connect to MQTT after %d attempts. Exiting.", MAX_MQTT_RETRIES)
+            return
+        
         mqtt_attempt += 1
         log.info(
             "Connecting to MQTT broker %s:%d (attempt %d, TLS=%s)",
@@ -164,8 +168,19 @@ async def _run_bridge() -> None:
                 keepalive=30,
             ) as client:
                 log.info("MQTT connected — subscribing to %s (QoS %d)", MQTT_TOPIC, MQTT_QOS)
-                await client.subscribe(MQTT_TOPIC, qos=MQTT_QOS)
+                try:
+                    # พยายาม Subscribe
+                    await client.subscribe(MQTT_TOPIC, qos=MQTT_QOS)
+                    log.info("Successfully subscribed to %s", MQTT_TOPIC)
+                    
+                except aiomqtt.MqttError as exc:
+                    # ถ้าพังตรงนี้ ให้พ่น Error และตัดสินใจว่าจะทำยังไงต่อ
+                    log.error("Failed to subscribe to %s: %s", MQTT_TOPIC, exc)
+                    # คุณสามารถเลือกได้ว่าจะ 'continue' เพื่อลองใหม่ หรือ 'return' เพื่อหยุด bridge
+                    return
+
                 mqtt_reconnect_delay = _BACKOFF_BASE  # reset on success
+                mqtt_attempt = 0
 
                 msg_iter = client.messages.__aiter__()
                 while not _shutdown_event.is_set():
@@ -177,6 +192,12 @@ async def _run_bridge() -> None:
                         break
 
                     topic_str: str = str(message.topic)
+                    try:
+                        payload_str = message.payload.decode() 
+                    except Exception:
+                        payload_str = str(message.payload) # Fallback 
+
+                    log.debug("New Message | Topic: %s | Payload: %s", topic_str, payload_str)
                     parts = topic_str.split("/")
 
                     # topic format: gait/telemetry/<user_id>
@@ -189,10 +210,23 @@ async def _run_bridge() -> None:
                         message.payload if isinstance(message.payload, bytes) else message.payload.encode()
                     )
 
+                    log.debug(
+                        "Received message on %s (%d bytes): %s",
+                        topic_str,
+                        len(raw_payload),
+                        raw_payload[:200],
+                    )
+
                     # --- Redis write with inline reconnect ---
                     redis_attempt = 0
                     while True:
                         redis_attempt += 1
+                        log.debug(
+                            "Writing to Redis (attempt %d) for user_id=%s (payload %d bytes)",
+                            redis_attempt,
+                            user_id,
+                            len(raw_payload),
+                        )
                         try:
                             await _xadd(redis, user_id, raw_payload)
                             redis_reconnect_delay = _BACKOFF_BASE  # reset on success
