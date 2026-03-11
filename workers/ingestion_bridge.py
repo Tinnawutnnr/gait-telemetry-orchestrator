@@ -22,6 +22,7 @@ logging.basicConfig(
 )
 log = logging.getLogger("ingestion_bridge")
 
+
 # Configuration
 def _get_int_env(name: str, default: int) -> int:
     # Safely parse an integer environment variable, falling back to default on error.
@@ -148,7 +149,7 @@ async def _run_bridge() -> None:
         if mqtt_attempt >= MAX_MQTT_RETRIES:
             log.error("Critical: Failed to connect to MQTT after %d attempts. Exiting.", MAX_MQTT_RETRIES)
             return
-        
+
         mqtt_attempt += 1
         log.info(
             "Connecting to MQTT broker %s:%d (attempt %d, TLS=%s)",
@@ -172,7 +173,7 @@ async def _run_bridge() -> None:
                     # พยายาม Subscribe
                     await client.subscribe(MQTT_TOPIC, qos=MQTT_QOS)
                     log.info("Successfully subscribed to %s", MQTT_TOPIC)
-                    
+
                 except aiomqtt.MqttError as exc:
                     # ถ้าพังตรงนี้ ให้พ่น Error และตัดสินใจว่าจะทำยังไงต่อ
                     log.error("Failed to subscribe to %s: %s", MQTT_TOPIC, exc)
@@ -193,9 +194,9 @@ async def _run_bridge() -> None:
 
                     topic_str: str = str(message.topic)
                     try:
-                        payload_str = message.payload.decode() 
+                        payload_str = message.payload.decode()
                     except Exception:
-                        payload_str = str(message.payload) # Fallback 
+                        payload_str = str(message.payload)  # Fallback
 
                     log.debug("New Message | Topic: %s | Payload: %s", topic_str, payload_str)
                     parts = topic_str.split("/")
