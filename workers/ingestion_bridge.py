@@ -170,14 +170,12 @@ async def _run_bridge() -> None:
             ) as client:
                 log.info("MQTT connected — subscribing to %s (QoS %d)", MQTT_TOPIC, MQTT_QOS)
                 try:
-                    # พยายาม Subscribe
+                    # try to Subscribe
                     await client.subscribe(MQTT_TOPIC, qos=MQTT_QOS)
                     log.info("Successfully subscribed to %s", MQTT_TOPIC)
 
                 except aiomqtt.MqttError as exc:
-                    # ถ้าพังตรงนี้ ให้พ่น Error และตัดสินใจว่าจะทำยังไงต่อ
                     log.error("Failed to subscribe to %s: %s", MQTT_TOPIC, exc)
-                    # คุณสามารถเลือกได้ว่าจะ 'continue' เพื่อลองใหม่ หรือ 'return' เพื่อหยุด bridge
                     return
 
                 mqtt_reconnect_delay = _BACKOFF_BASE  # reset on success

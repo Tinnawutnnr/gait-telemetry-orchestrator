@@ -1,6 +1,7 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import PyJWTError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -28,7 +29,7 @@ def get_current_user(
         if sub is None or role is None:
             raise credentials_exception
         token_data = TokenData(user_id=int(sub), role=role)
-    except (JWTError, ValueError):
+    except (PyJWTError, ValueError):
         raise credentials_exception from None
 
     user = db.get(User, token_data.user_id)
