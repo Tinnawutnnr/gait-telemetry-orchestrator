@@ -92,6 +92,7 @@ class Patient(Base):
     window_reports: Mapped[list[WindowReport]] = relationship(back_populates="patient")
     daily_averages: Mapped[list[DailyAverage]] = relationship(back_populates="patient")
     anomaly_logs: Mapped[list[AnomalyLog]] = relationship(back_populates="patient")
+    session_reports: Mapped[list[SessionReport]] = relationship(back_populates="patient")
 
     def __repr__(self) -> str:
         return f"<Patient id={self.id} name={self.first_name!r} {self.last_name!r}>"
@@ -137,6 +138,34 @@ class WindowReport(Base):
 
     def __repr__(self) -> str:
         return f"<WindowReport id={self.window_report_id!r} patient={self.patient_id}>"
+
+
+class SessionReport(Base):
+    __tablename__ = "session_reports"
+
+    session_report_id: Mapped[str] = mapped_column(String, primary_key=True)
+    patient_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("patients.id"), index=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    total_windows_analyzed: Mapped[int | None] = mapped_column(Integer)
+    total_steps: Mapped[int | None] = mapped_column(Integer)
+    total_calories: Mapped[float | None] = mapped_column(Float)
+    total_distance_m: Mapped[float | None] = mapped_column(Float)
+
+    avg_max_gyr_ms: Mapped[float | None] = mapped_column(Float)
+    avg_val_gyr_hs: Mapped[float | None] = mapped_column(Float)
+    avg_swing_time: Mapped[float | None] = mapped_column(Float)
+    avg_stance_time: Mapped[float | None] = mapped_column(Float)
+    avg_stride_cv: Mapped[float | None] = mapped_column(Float)
+
+    anomaly_count: Mapped[int | None] = mapped_column(Integer)
+
+    patient: Mapped[Patient] = relationship(back_populates="session_reports")
+
+    __table_args__ = (Index("ix_session_reports_patient_timestamp", "patient_id", "timestamp"),)
+
+    def __repr__(self) -> str:
+        return f"<SessionReport id={self.session_report_id!r} patient={self.patient_id} timestamp={self.timestamp}>"
 
 
 class DailyAverage(Base):

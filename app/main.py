@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from app.api.v1.endpoints.auth import router as auth_router
 from app.api.v1.endpoints.caretaker_patients import router as caretaker_patients_router
+from app.api.v1.endpoints.mqtt_credential import router as mqtt_credential_router
 from app.api.v1.endpoints.patients import router as patients_router
 from app.api.v1.endpoints.profiles import router as profiles_router
 
@@ -14,6 +15,7 @@ app.include_router(auth_router, prefix="/api/v1")
 app.include_router(profiles_router, prefix="/api/v1")
 app.include_router(patients_router, prefix="/api/v1")
 app.include_router(caretaker_patients_router, prefix="/api/v1")
+app.include_router(mqtt_credential_router, prefix="/api/v1")
 
 
 @app.get("/health")
