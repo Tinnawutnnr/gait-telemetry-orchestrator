@@ -15,7 +15,7 @@ from redis.exceptions import RedisError
 
 # Structured logging
 logging.basicConfig(
-    level=logging.info,
+    level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
     datefmt="%Y-%m-%dT%H:%M:%S",
     stream=sys.stdout,
