@@ -15,5 +15,10 @@ class Settings(BaseSettings):
     HASH_ALGORITHM: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int
 
+    # mqtt credential for mobile app
+    MQTT_BROKER: str
+    MQTT_PUB_USERNAME: str
+    MQTT_PUB_PASSWORD: str
+
 
 settings = Settings()
