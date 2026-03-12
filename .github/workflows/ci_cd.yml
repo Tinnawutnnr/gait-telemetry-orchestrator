@@ -58,6 +58,9 @@ jobs:
       SECRET_KEY: ${{ secrets.SECRET_KEY }}
       HASH_ALGORITHM: HS256
       ACCESS_TOKEN_EXPIRE_MINUTES: 60
+      MQTT_BROKER: "localhost"
+      MQTT_PUB_USERNAME: "test_user"
+      MQTT_PUB_PASSWORD: "test_password"
 
     steps:
       - name: Checkout
@@ -86,6 +89,9 @@ jobs:
         run: alembic upgrade head
         env:
           ALEMBIC_TARGET_ENV: test
+          MQTT_BROKER: "localhost"
+          MQTT_PUB_USERNAME: "test_user"
+          MQTT_PUB_PASSWORD: "test_password"
 
       - name: Pytest
         run: pytest -v --tb=short --strict-markers -x
