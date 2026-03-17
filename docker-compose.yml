@@ -72,7 +72,7 @@ services:
 
   # ── Kafka (KRaft mode) ───────────────────────────────────────────────────
   kafka:
-    image: apache/kafka:latest 
+    image: apache/kafka:3.7.0
     container_name: gait-kafka
     ports:
       - "9092:9092"
@@ -92,7 +92,7 @@ services:
       - KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS=0
       - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
       - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
-      
+
       - KAFKA_LOG_DIRS=/var/lib/kafka/data
       - KAFKA_CLUSTER_ID=6Lc9H2v9TeS0lFm7pQ7A6w
     volumes:
