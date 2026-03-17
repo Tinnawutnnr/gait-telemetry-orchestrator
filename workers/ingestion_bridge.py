@@ -108,6 +108,10 @@ async def _run_bridge() -> None:
                 return
             delay = min(delay * _BACKOFF_FACTOR, _BACKOFF_CAP)
 
+    if producer is None:
+        log.warning("Kafka producer was not initialized; skipping MQTT bridge startup and exiting.")
+        return
+
     mqtt_reconnect_delay = _BACKOFF_BASE
     mqtt_attempt = 0
 
@@ -175,6 +179,13 @@ async def _run_bridge() -> None:
                     )
 
                     # Use send_and_wait for at-least-once delivery and ordering per user
+                    if producer is None:
+                        log.error(
+                            "Kafka producer is not available; dropping message for user_id=%s",
+                            user_id,
+                        )
+                        continue
+
                     try:
                         await producer.send_and_wait(KAFKA_TOPIC, value=raw_payload, key=user_id.encode())
                         log.debug(
