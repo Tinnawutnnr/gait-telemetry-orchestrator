@@ -30,3 +30,7 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+
+#model testing
+data/
+tests/simulate_mobile_app.py
