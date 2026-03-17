@@ -1,4 +1,53 @@
 services:
+# ── 1. FastAPI Orchestrator ───────────────────────────────────────────────
+  api:
+    build: 
+      context: .
+    container_name: gait_api
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8000:8000"
+    networks:
+      - gait_net
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ── Ingestion Bridge (MQTT to Kafka) ──────────────────────────────────────
+  ingestion_bridge:
+    build: 
+      context: .
+    container_name: gait_ingestion_bridge
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - KAFKA_BROKER_URL=kafka:9092 
+      - KAFKA_TOPIC=raw-gait-telemetry
+      
+      - SKIP_MIGRATIONS=true
+
+      - MQTT_BROKER=${MQTT_BROKER} 
+      - MQTT_PORT=${MQTT_PORT}
+      - MQTT_USERNAME=${MQTT_USERNAME}
+      - MQTT_PASSWORD=${MQTT_PASSWORD}
+      - MQTT_USE_TLS=true
+    command: ["python", "-m", "workers.ingestion_bridge"]
+    healthcheck:
+      test: ["CMD-SHELL", "find /tmp/bridge_healthy -mmin -1 | grep -q . || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s # Allow extra startup time for MQTT connection
+    networks:
+      - gait_net
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  # ── Worker for Kafka Consumers ─────────────────────
+
+
   # ── PostgreSQL ────────────────────────────────────────────────────────────
   db:
     image: postgres:16-alpine
@@ -21,6 +70,7 @@ services:
     networks:
       - gait_net
 
+  # ── Kafka (KRaft mode) ───────────────────────────────────────────────────
   kafka:
     image: bitnami/kafka:3.7
     container_name: gait-kafka
@@ -57,6 +107,23 @@ services:
       retries: 5
     networks:
       - gait_net
+
+  # ── Kafka UI ─────────────────────────────────────────────────────────────
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: gait-kafka-ui
+    ports:
+      - "8080:8080"
+    environment:
+      - KAFKA_CLUSTERS_0_NAME=local-gait-cluster
+      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVER=kafka:9092
+      - KAFKA_CLUSTERS_0_METRICS_PORT=9999
+      - DYNAMIC_CONFIG_ENABLED='true'
+    networks:
+      - gait_net
+    depends_on:
+      kafka:
+        condition: service_healthy
 
 networks:
   gait_net:

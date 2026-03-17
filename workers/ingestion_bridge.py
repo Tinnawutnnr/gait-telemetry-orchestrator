@@ -7,11 +7,9 @@ import signal
 import ssl
 import sys
 from typing import NoReturn
-from urllib.parse import urlparse
 
+from aiokafka import AIOKafkaProducer
 import aiomqtt
-from redis.asyncio import Redis
-from redis.exceptions import RedisError
 
 # Structured logging
 logging.basicConfig(
@@ -41,13 +39,9 @@ def _get_int_env(name: str, default: int) -> int:
         return default
 
 
-REDIS_URL: str = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
-
-
-def _redact_url(url: str) -> str:
-    # Return host:port/db with credentials stripped.
-    parsed = urlparse(url)
-    return f"{parsed.hostname}:{parsed.port or 6379}/{parsed.path.lstrip('/')}"
+KAFKA_BROKER_URL: str = os.environ.get("KAFKA_BROKER_URL", "localhost:9092")
+KAFKA_TOPIC: str = os.environ.get("KAFKA_TOPIC", "raw-gait-telemetry")
+KAFKA_GROUP_ID: str = os.environ.get("KAFKA_GROUP_ID", "gait_data_consumers")
 
 
 MQTT_BROKER: str = os.environ.get("MQTT_BROKER", "localhost")
@@ -59,10 +53,6 @@ MQTT_USE_TLS: bool = os.environ.get("MQTT_USE_TLS", "true").lower() in {"1", "tr
 MQTT_TOPIC: str = "gait/telemetry/+"
 MQTT_QOS: int = _get_int_env("MQTT_QOS", 1)
 
-# Redis Stream tuning
-STREAM_MAXLEN: int = _get_int_env("STREAM_MAXLEN", 1000)
-# Approximate trimming (~) trades strict accuracy for much better write throughput
-STREAM_MAXLEN_APPROX: bool = True
 
 # Backoff parameters (seconds)
 _BACKOFF_BASE: float = 1.0
@@ -95,48 +85,26 @@ async def _interruptible_sleep(delay: float) -> bool:
         return False
 
 
-# Redis helper
-async def _connect_redis() -> Redis:
-    # Return a connected Redis client, retrying with exponential backoff.
+async def _run_bridge() -> None:
+    producer: AIOKafkaProducer | None = None
     delay = _BACKOFF_BASE
     attempt = 0
-    while True:
-        if _shutdown_event.is_set():
-            raise asyncio.CancelledError("Shutdown requested during Redis connection")
+    while not _shutdown_event.is_set():
         attempt += 1
         try:
-            client: Redis = Redis.from_url(REDIS_URL, decode_responses=False)
-            await client.ping()
-            log.info("Redis connected (attempt %d): %s", attempt, _redact_url(REDIS_URL))
-            return client
-        except RedisError as exc:
-            log.error("Redis connection failed (attempt %d): %s — retrying in %.1fs", attempt, exc, delay)
-        if await _interruptible_sleep(delay):
-            raise asyncio.CancelledError("Shutdown requested during Redis connection")
-        delay = min(delay * _BACKOFF_FACTOR, _BACKOFF_CAP)
-
-
-async def _xadd(redis: Redis, user_id: str, raw_payload: bytes) -> None:
-    # Append a telemetry record to the user's Redis Stream.
-    stream_key = f"telemetry:stream:{user_id}"
-    await redis.xadd(
-        stream_key,
-        {"payload": raw_payload},
-        maxlen=STREAM_MAXLEN,
-        approximate=STREAM_MAXLEN_APPROX,
-    )
-
-
-# Core bridge coroutine
-async def _run_bridge() -> None:
-    redis: Redis | None = None
-    try:
-        redis = await _connect_redis()
-    except asyncio.CancelledError:
-        log.info("Shutdown requested before Redis connected — exiting cleanly")
-        return
-
-    redis_reconnect_delay = _BACKOFF_BASE
+            producer = AIOKafkaProducer(
+                bootstrap_servers=KAFKA_BROKER_URL,
+                acks="all",  # Strong durability
+                linger_ms=5,  # Small batching for throughput
+            )
+            await producer.start()
+            log.info("Kafka producer connected (attempt %d): %s", attempt, KAFKA_BROKER_URL)
+            break
+        except Exception as exc:
+            log.error("Kafka connection failed (attempt %d): %s — retrying in %.1fs", attempt, exc, delay)
+            if await _interruptible_sleep(delay):
+                return
+            delay = min(delay * _BACKOFF_FACTOR, _BACKOFF_CAP)
 
     mqtt_reconnect_delay = _BACKOFF_BASE
     mqtt_attempt = 0
@@ -148,10 +116,10 @@ async def _run_bridge() -> None:
     while not _shutdown_event.is_set():
         if mqtt_attempt >= MAX_MQTT_RETRIES:
             log.error("Critical: Failed to connect to MQTT after %d attempts. Exiting.", MAX_MQTT_RETRIES)
-            return
+            break
 
         mqtt_attempt += 1
-        log.info(
+        log.debug(
             "Connecting to MQTT broker %s:%d (attempt %d, TLS=%s)",
             MQTT_BROKER,
             MQTT_PORT,
@@ -165,23 +133,20 @@ async def _run_bridge() -> None:
                 username=MQTT_USERNAME,
                 password=MQTT_PASSWORD,
                 tls_context=tls_context,
-                # Keep-alive lets the broker detect stale connections quickly
                 keepalive=30,
             ) as client:
                 log.info("MQTT connected — subscribing to %s (QoS %d)", MQTT_TOPIC, MQTT_QOS)
                 try:
-                    # try to Subscribe
                     await client.subscribe(MQTT_TOPIC, qos=MQTT_QOS)
                     log.info("Successfully subscribed to %s", MQTT_TOPIC)
-
                 except aiomqtt.MqttError as exc:
                     log.error("Failed to subscribe to %s: %s", MQTT_TOPIC, exc)
-                    return
+                    break
 
-                mqtt_reconnect_delay = _BACKOFF_BASE  # reset on success
+                mqtt_reconnect_delay = _BACKOFF_BASE
                 mqtt_attempt = 0
-
                 msg_iter = client.messages.__aiter__()
+
                 while not _shutdown_event.is_set():
                     try:
                         message = await asyncio.wait_for(msg_iter.__anext__(), timeout=1.0)
@@ -191,75 +156,34 @@ async def _run_bridge() -> None:
                         break
 
                     topic_str: str = str(message.topic)
-                    try:
-                        payload_str = message.payload.decode()
-                    except Exception:
-                        payload_str = str(message.payload)  # Fallback
-
-                    log.debug("New Message | Topic: %s | Payload: %s", topic_str, payload_str)
                     parts = topic_str.split("/")
 
-                    # topic format: gait/telemetry/<user_id>
-                    if len(parts) != 3:  # noqa: PLR2004
+                    if len(parts) != 3:
                         log.warning("Skipping malformed topic: %s", topic_str)
                         continue
 
                     user_id = parts[2]
+
+                    # Send raw bytes directly to Kafka
                     raw_payload: bytes = (
-                        message.payload if isinstance(message.payload, bytes) else message.payload.encode()
+                        message.payload if isinstance(message.payload, bytes) else str(message.payload).encode()
                     )
 
-                    log.debug(
-                        "Received message on %s (%d bytes): %s",
-                        topic_str,
-                        len(raw_payload),
-                        raw_payload[:200],
-                    )
-
-                    # --- Redis write with inline reconnect ---
-                    redis_attempt = 0
-                    while True:
-                        redis_attempt += 1
+                    # Fire-and-forget for lowest latency; use send_and_wait for strict durability
+                    # Here, we use send_and_wait for at-least-once delivery and ordering per user
+                    try:
+                        await producer.send_and_wait(KAFKA_TOPIC, value=raw_payload, key=user_id.encode())
                         log.debug(
-                            "Writing to Redis (attempt %d) for user_id=%s (payload %d bytes)",
-                            redis_attempt,
+                            "Sent to Kafka: user=%s, bytes=%d",
                             user_id,
                             len(raw_payload),
                         )
-                        try:
-                            await _xadd(redis, user_id, raw_payload)
-                            redis_reconnect_delay = _BACKOFF_BASE  # reset on success
-                            log.debug(
-                                "XADD telemetry:stream:%s (%d bytes)",
-                                user_id,
-                                len(raw_payload),
-                            )
-                            break
-                        except RedisError as exc:
-                            log.error(
-                                "Redis write failed (attempt %d): %s — reconnecting in %.1fs",
-                                redis_attempt,
-                                exc,
-                                redis_reconnect_delay,
-                            )
-                            if _shutdown_event.is_set():
-                                log.warning("Shutdown requested during Redis retry. Breaking loop.")
-                                break
-
-                            if await _interruptible_sleep(redis_reconnect_delay):
-                                log.warning("Shutdown during Redis retry sleep. Breaking loop.")
-                                break
-                            redis_reconnect_delay = min(redis_reconnect_delay * _BACKOFF_FACTOR, _BACKOFF_CAP)
-                            try:
-                                await redis.aclose()
-                            except Exception:  # noqa: BLE001, S110
-                                pass
-                            redis = await _connect_redis()
+                    except Exception as exc:
+                        log.error("Kafka send failed for user_id=%s: %s", user_id, exc)
 
         except asyncio.CancelledError:
             log.info("Bridge cancelled — shutting down")
             break
-
         except aiomqtt.MqttError as exc:
             if _shutdown_event.is_set():
                 break
@@ -273,11 +197,14 @@ async def _run_bridge() -> None:
             mqtt_reconnect_delay = min(mqtt_reconnect_delay * _BACKOFF_FACTOR, _BACKOFF_CAP)
 
     log.info("Bridge coroutine exiting cleanly")
-    if redis is not None:
+
+    # Gracefull shutdown of Kafka producer
+    if producer is not None:
         try:
-            await redis.aclose()
-        except Exception:  # noqa: BLE001, S110
-            pass
+            await producer.stop()
+            log.info("Kafka producer stopped cleanly")
+        except Exception:
+            log.warning("Error while stopping Kafka producer", exc_info=True)
 
 
 # Entry point
