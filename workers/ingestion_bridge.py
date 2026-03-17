@@ -174,8 +174,7 @@ async def _run_bridge() -> None:
                         message.payload if isinstance(message.payload, bytes) else str(message.payload).encode()
                     )
 
-                    # Fire-and-forget for lowest latency; use send_and_wait for strict durability
-                    # Here, we use send_and_wait for at-least-once delivery and ordering per user
+                    # Use send_and_wait for at-least-once delivery and ordering per user
                     try:
                         await producer.send_and_wait(KAFKA_TOPIC, value=raw_payload, key=user_id.encode())
                         log.debug(
