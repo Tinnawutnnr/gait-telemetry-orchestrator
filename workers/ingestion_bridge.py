@@ -206,7 +206,7 @@ async def _run_bridge() -> None:
 
     log.info("Bridge coroutine exiting cleanly")
 
-    # Gracefull shutdown of Kafka producer
+    # Graceful shutdown of Kafka producer
     if producer is not None:
         try:
             await producer.stop()
