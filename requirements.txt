@@ -8,6 +8,15 @@ python-multipart>=0.0.9,<1
 pyjwt>=2.10,<3.0
 bcrypt==4.0.1
 
+#ML worker
+numpy>=1.26,<3
+pandas>=2.2,<3
+scipy>=1.11,<2
+scikit-learn>=1.4,<2
+aiokafka>=0.10,<1
+
 # MQTT-to-Redis ingestion bridge
 aiomqtt>=2.3,<3
-aiokafka
+
+#test
+paho-mqtt>=2.0,<3

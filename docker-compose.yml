@@ -46,7 +46,25 @@ services:
         condition: service_healthy
 
   # ── Worker for Kafka Consumers ─────────────────────
-
+  ml_worker:
+    build:
+      context: .
+    container_name: gait_ml_worker
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - KAFKA_BROKER_URL=${KAFKA_BROKER_URL}
+      - KAFKA_TOPIC=${KAFKA_TOPIC}
+      - KAFKA_GROUP_ID=${KAFKA_GROUP_ID}
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    command: ["python", "-m", "workers.ml_worker"]
+    networks:
+      - gait_net
+    depends_on:
+      kafka:
+        condition: service_healthy
+      db:
+        condition: service_healthy
 
   # ── PostgreSQL ────────────────────────────────────────────────────────────
   db:
