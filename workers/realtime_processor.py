@@ -51,7 +51,6 @@ class GaitSystem:
         if len(self.raw_buffer) >= WINDOW_SAMPLES:
             window_data = np.array(self.raw_buffer[:WINDOW_SAMPLES])
             self.raw_buffer = self.raw_buffer[WINDOW_SAMPLES:] # Slide Window
-            
             return self._analyze_window(window_data)
         
         return None
