@@ -22,12 +22,12 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      - KAFKA_BROKER_URL=kafka:9092 
+      - KAFKA_BROKER_URL=kafka:9092
       - KAFKA_TOPIC=raw-gait-telemetry
       
       - SKIP_MIGRATIONS=true
 
-      - MQTT_BROKER=${MQTT_BROKER} 
+      - MQTT_BROKER=${MQTT_BROKER}
       - MQTT_PORT=${MQTT_PORT}
       - MQTT_USERNAME=${MQTT_USERNAME}
       - MQTT_PASSWORD=${MQTT_PASSWORD}
