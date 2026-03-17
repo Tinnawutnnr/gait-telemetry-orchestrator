@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from pathlib import Path
 import signal
 import ssl
 import sys
@@ -86,6 +87,8 @@ async def _interruptible_sleep(delay: float) -> bool:
 
 
 async def _run_bridge() -> None:
+    health_file = Path("/tmp/bridge_healthy")  # noqa: S108
+
     producer: AIOKafkaProducer | None = None
     delay = _BACKOFF_BASE
     attempt = 0
@@ -151,6 +154,9 @@ async def _run_bridge() -> None:
                     try:
                         message = await asyncio.wait_for(msg_iter.__anext__(), timeout=1.0)
                     except TimeoutError:
+                        # No message received in the last second, but connection is healthy.
+                        # Touch the health file and continue.
+                        health_file.touch(exist_ok=True)
                         continue
                     except StopAsyncIteration:
                         break
@@ -178,6 +184,8 @@ async def _run_bridge() -> None:
                             user_id,
                             len(raw_payload),
                         )
+                        # Touch the health file on successful processing of each message to indicate liveness.
+                        health_file.touch(exist_ok=True)
                     except Exception as exc:
                         log.error("Kafka send failed for user_id=%s: %s", user_id, exc)
 
