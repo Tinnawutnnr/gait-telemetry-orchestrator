@@ -54,36 +54,51 @@ async def run_worker():
                 #loop of waiting only 1 sec for data
                 msg = await asyncio.wait_for(consumer.getone(), timeout=1.0)
                 payload = msg.value
-                gyro_val = None
+
+                samples = []
 
                 if isinstance(payload, dict):
-                    gyro_val = payload.get("gyro_z")
+                    raw = payload.get("gyro_z")
+                    if isinstance(raw, list):
+                        samples = raw
+                    elif isinstance(raw, (int, float)):
+                        samples = [raw]
+                elif isinstance(payload, list):
+                    # allow direct list payloads too
+                    samples = payload
                 elif isinstance(payload, (int, float)):
-                    gyro_val = payload
-                elif isinstance(payload, list) and len(payload) > 0 and isinstance(payload[0], dict):
-                    gyro_val = payload[0].get("gyro_z")
+                    samples = [payload]
                 else:
-                    log.warning("Skipping malformed payload (type=%s) : %s", type(payload).__name__, str(payload)[:100])
+                    log.warning("Skipping malformed payload type=%s", type(payload).__name__)
                     continue
 
-                #if exist append it
-                if gyro_val is not None:
+                valid_count = 0
+                for v in samples:
                     try:
-                        buffer.append(float(gyro_val))
-                    except (ValueError, TypeError) as e:
-                        log.warning("Failed to convert gyro value to float: %s (value=%s)", e, gyro_val)
+                        buffer.append(float(v))
+                        valid_count += 1
+                    except (TypeError, ValueError):
                         continue
 
-                if len(buffer) >= 100:
-                    #throw 100 sample to model when reached
-                    result = await asyncio.to_thread(system.process_stream_chunk, buffer)
-                    #clear buffer
-                    buffer = []
+                if valid_count == 0:
+                    log.warning("No valid gyro samples in payload")
+                    continue
+
+                # process in fixed chunks of 100 samples
+                while len(buffer) >= 100:
+                    chunk = buffer[:100]
+                    buffer = buffer[100:]
+
+                    result = await asyncio.to_thread(system.process_stream_chunk, chunk)
 
                     if result:
-                        log.info(f"ML Report Generated: {result.get('type')}")
-                        if result.get('gait_health'):
-                            log.info(f"Status: {result['gait_health']} | score: {result.get('anomaly_score')}")
+                        log.info("ML Report Generated: %s", result.get("type"))
+                        if result.get("gait_health"):
+                            log.info(
+                                "Status: %s | score: %s",
+                                result["gait_health"],
+                                result.get("anomaly_score"),
+                            )
 
                         # todo: save result to postgreSQL
             except asyncio.TimeoutError:
