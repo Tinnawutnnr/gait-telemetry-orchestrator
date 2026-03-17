@@ -42,7 +42,6 @@ def _get_int_env(name: str, default: int) -> int:
 
 KAFKA_BROKER_URL: str = os.environ.get("KAFKA_BROKER_URL", "localhost:9092")
 KAFKA_TOPIC: str = os.environ.get("KAFKA_TOPIC", "raw-gait-telemetry")
-KAFKA_GROUP_ID: str = os.environ.get("KAFKA_GROUP_ID", "gait_data_consumers")
 
 
 MQTT_BROKER: str = os.environ.get("MQTT_BROKER", "localhost")
