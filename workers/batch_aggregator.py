@@ -17,13 +17,13 @@ engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Set the number of days to keep raw data (WindowReport) for retrospect
-RETENTION_DAYS = 7  
+RETENTION_DAYS = 1  
 
 def calculate_daily_average_and_cleanup():
     """
     Function wakes up to do 2 things: 
     1. Calculate yesterday's average
-    2. Delete raw data older than 7 days
+    2. Delete raw data older than 1 day
     """
     yesterday = date.today() - timedelta(days=1)
     cutoff_date = date.today() - timedelta(days=RETENTION_DAYS)
