@@ -11,7 +11,7 @@ from app.models import WindowReport, SessionReport
 
 router = APIRouter()
 
-# สำหรับรับ Request จาก Mobile App
+# For receiving requests from the Mobile App
 class SessionStopRequest(BaseModel):
     patient_id: int
     start_time: datetime
@@ -20,27 +20,27 @@ class SessionStopRequest(BaseModel):
 @router.post("/sessions/stop")
 def stop_session(payload: SessionStopRequest, db: Session = Depends(get_db)):
     """
-    API สำหรับแอปมือถือกดปุ่ม 'หยุดเดิน' 
-    ระบบจะรวบรวม WindowReport ในช่วงเวลานั้นมาสร้างเป็น SessionReport
+    API for when the mobile app presses the 'Stop Walking' button.
+    The system will aggregate WindowReports during that period to create a SessionReport
     """
     
-    # 2.  ทำ Aggregation
+    # 2.  Perform Aggregation
     stmt = select(
         func.count().label("total_windows"),
         
-        # ใช้ func.max() เพื่อดึงค่า "ก้าวล่าสุดที่ทำได้" ไม่ใช่เอามา sum() กัน
+        # Use func.max() to extract the "latest steps achieved", not summing them up
         func.max(WindowReport.steps).label("total_steps"),
         func.max(WindowReport.calories).label("total_calories"),
         func.max(WindowReport.distance_m).label("total_distance_m"),
         
-        # ค่าเฉลี่ย (AVG)
+        # Averages (AVG)
         func.avg(WindowReport.max_gyr_ms).label("avg_max_gyr_ms"),
         func.avg(WindowReport.val_gyr_hs).label("avg_val_gyr_hs"),
         func.avg(WindowReport.swing_time).label("avg_swing_time"),
         func.avg(WindowReport.stance_time).label("avg_stance_time"),
         func.avg(WindowReport.stride_cv).label("avg_stride_cv"),
         
-        # นับจำนวนหน้าต่างที่เกิด Anomaly
+        # Count the number of windows with an Anomaly
         func.sum(
             cast(WindowReport.gait_health == 'ANOMALY_DETECTED', Integer)
         ).label("anomaly_count")
@@ -48,16 +48,16 @@ def stop_session(payload: SessionStopRequest, db: Session = Depends(get_db)):
         WindowReport.patient_id == payload.patient_id,
         WindowReport.timestamp >= payload.start_time,
         WindowReport.timestamp <= payload.end_time,
-        WindowReport.status == 'MONITORING' # เอาเฉพาะตอนเดินจริง ไม่นับตอน Calibrate
+        WindowReport.status == 'MONITORING' # Include only actual walking, exclude calibration phase
     )
 
     result = db.execute(stmt).first()
 
-    # ถ้าไม่มีข้อมูลเลย (เช่น เปิดแอปแล้วกดปิดทันทีโดยไม่เดิน)
+    # If there is no data at all (e.g., opened the app and closed immediately without walking)
     if not result or result.total_windows == 0:
-        raise HTTPException(status_code=404, detail="ไม่พบข้อมูลการเดินในช่วงเวลานี้")
+        raise HTTPException(status_code=404, detail="No walking data found during this period")
 
-    # 3. สร้าง Record ลงตาราง SessionReport
+    # 3. Create a Record in the SessionReport table
     new_session = SessionReport(
         session_report_id=str(uuid.uuid4()),
         patient_id=payload.patient_id,

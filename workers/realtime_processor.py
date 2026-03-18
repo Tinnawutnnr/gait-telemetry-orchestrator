@@ -20,7 +20,7 @@ USER_HEIGHT_CM = 175.0
 class GaitSystem:
     def __init__(self):
         self.raw_buffer = []
-        self.normal_windows = []  # Buffer สำหรับ Train Model
+        self.normal_windows = []  # Buffer for training model
 
         self.is_calibrated = False
         self.total_steps = 0
@@ -184,7 +184,7 @@ class GaitSystem:
         # 1. Basic Peak Detection
         max_val = np.max(sig)
         if max_val < 1.0:
-            return None  # สัญญาณเบาเกิน (นั่งเฉยๆ)
+            return None  # Signal too weak (sitting still)
 
         height_thresh = 0.25 * max_val
         min_dist = int(0.4 * FS)
@@ -192,7 +192,7 @@ class GaitSystem:
         ms_peaks, _ = find_peaks(sig, distance=min_dist, height=height_thresh)
         hs_candidates, _ = find_peaks(-sig, distance=int(0.3 * FS))
 
-        # 2. Match MS -> HS (จับคู่ Swing -> Impact)
+        # 2. Match MS -> HS (Match Swing -> Impact)
         valid_ms = []
         valid_hs = []
         for ms in ms_peaks:
@@ -202,13 +202,13 @@ class GaitSystem:
                 valid_hs.append(future_hs[0])
 
         if len(valid_hs) < 3:
-            return None  # ก้าวน้อยเกินไป (Noise/หยุดเดิน)
+            return None  # Too few steps (Noise/Stopped walking)
 
         ms_peaks = np.array(valid_ms)
         hs_peaks = np.array(valid_hs)
 
         # 3. Calculate Parameters from VALID STEPS ONLY
-        max_gyr_values = sig[ms_peaks]  # เอาเฉพาะค่าจากก้าวที่จับคู่แล้ว
+        max_gyr_values = sig[ms_peaks]  # Take only values from matched steps
         val_gyr_values = sig[hs_peaks]
 
         swing_times = []
@@ -223,7 +223,7 @@ class GaitSystem:
             stride_t = (next_hs - curr_hs) / FS
 
             # Find TO (Toe-Off)
-            # Logic V2: หา TO ระหว่าง HS และ MS ถัดไป
+            # Logic V2: Find TO between HS and next MS
             next_ms_list = ms_peaks[(ms_peaks > curr_hs) & (ms_peaks < next_hs)]
             if len(next_ms_list) > 0:
                 next_ms = next_ms_list[0]
@@ -238,13 +238,13 @@ class GaitSystem:
                         stance_t = (to_idx - curr_hs) / FS
                         swing_t = (next_hs - to_idx) / FS
 
-                        # Physiological Filter (กรองค่าที่เป็นไปไม่ได้)
+                        # Physiological Filter (Filter out impossible values)
                         if 0.2 < stance_t < 2.0 and 0.2 < swing_t < 2.0:
                             stance_times.append(stance_t)
                             swing_times.append(swing_t)
                             stride_times.append(stride_t)
 
-        # ถ้ากรองแล้วไม่เหลือข้อมูลเลย
+        # If no data left after filtering
         if len(stride_times) < 2:
             return None
 
@@ -262,14 +262,14 @@ class GaitSystem:
 
     def _train_model(self):
         if len(self.normal_windows) < 2:
-            return  # ต้องมีอย่างน้อย 2 ถึงจะเทรนได้
+            return  # Must have at least 2 to train
 
         X_train = np.array(self.normal_windows)
         n_samples = len(X_train)
 
-        # ใช้สูตร n-1 (Golden Formula)
-        # ถ้ามี 10 ตัว -> k=9 (ดีที่สุด)
-        # ถ้ามี 20 ตัว -> k=15 (Max Cap)
+        # Use n-1 formula (Golden Formula)
+        # If there are 10 items -> k=9 (Best)
+        # If there are 20 items -> k=15 (Max Cap)
         n_neighbors = min(15, n_samples - 1)
         if n_neighbors < 1:
             n_neighbors = 1
