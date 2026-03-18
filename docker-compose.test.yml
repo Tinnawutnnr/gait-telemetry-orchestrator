@@ -33,28 +33,6 @@ services:
     networks:
       - gait_test_net
 
-  # ── Test Redis ───────────────────────────────────────────────────────────
-  redis_test:
-    image: redis:7-alpine
-    container_name: gait_redis_test
-    env_file: .env.test
-    command: >
-      redis-server
-      --maxmemory      64mb
-      --maxmemory-policy allkeys-lru
-      --save           ""
-      --appendonly     no
-    ports:
-      - "6380:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 3s
-      timeout: 2s
-      retries: 10
-      start_period: 3s
-    networks:
-      - gait_test_net
-
 networks:
   gait_test_net:
     driver: bridge
