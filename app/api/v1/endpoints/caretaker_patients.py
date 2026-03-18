@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import require_role
@@ -10,27 +10,27 @@ from app.schemas.caretaker_patients import LinkPatientRequest, PatientListItem, 
 router = APIRouter(prefix="/caretakers/patients", tags=["caretaker-patients"])
 
 
-def _get_caretaker_profile(user: User, db: Session) -> Caretaker:
-    caretaker = db.scalar(select(Caretaker).where(Caretaker.user_id == user.id))
+async def _get_caretaker_profile(user: User, db: AsyncSession) -> Caretaker:
+    caretaker = await db.scalar(select(Caretaker).where(Caretaker.user_id == user.id))
     if caretaker is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caretaker profile not found")
     return caretaker
 
 
 @router.post("", status_code=status.HTTP_204_NO_CONTENT)
-def link_patient(
+async def link_patient(
     body: LinkPatientRequest,
     current_user: User = Depends(require_role("caretaker")),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> None:
     # Link a patient (by username) to this caretaker.
-    caretaker = _get_caretaker_profile(current_user, db)
+    caretaker = await _get_caretaker_profile(current_user, db)
 
-    patient_user = db.scalar(select(User).where(User.username == body.username, User.role == "patient"))
+    patient_user = await db.scalar(select(User).where(User.username == body.username, User.role == "patient"))
     if patient_user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient user not found")
 
-    patient = db.scalar(select(Patient).where(Patient.user_id == patient_user.id))
+    patient = await db.scalar(select(Patient).where(Patient.user_id == patient_user.id))
     if patient is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient profile not found")
 
@@ -39,26 +39,26 @@ def link_patient(
 
     patient.caretaker_id = caretaker.id
     try:
-        db.commit()
+        await db.commit()
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to link patient") from e
 
 
 @router.delete("/{username}", status_code=status.HTTP_204_NO_CONTENT)
-def unlink_patient(
+async def unlink_patient(
     username: str,
     current_user: User = Depends(require_role("caretaker")),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> None:
     # Unlink a patient from this caretaker (soft-unlink: sets caretaker_id to NULL).
-    caretaker = _get_caretaker_profile(current_user, db)
+    caretaker = await _get_caretaker_profile(current_user, db)
 
-    patient_user = db.scalar(select(User).where(User.username == username, User.role == "patient"))
+    patient_user = await db.scalar(select(User).where(User.username == username, User.role == "patient"))
     if patient_user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient user not found")
 
-    patient = db.scalar(select(Patient).where(Patient.user_id == patient_user.id))
+    patient = await db.scalar(select(Patient).where(Patient.user_id == patient_user.id))
     if patient is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient profile not found")
 
@@ -67,19 +67,19 @@ def unlink_patient(
 
     patient.caretaker_id = None
     try:
-        db.commit()
+        await db.commit()
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to unlink patient") from e
 
 
 @router.get("", response_model=list[PatientListItem])
-def list_patients(
+async def list_patients(
     current_user: User = Depends(require_role("caretaker")),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> list[PatientListItem]:
     # List all patients managed by this caretaker.
-    caretaker = _get_caretaker_profile(current_user, db)
+    caretaker = await _get_caretaker_profile(current_user, db)
     # use join for better performance instead of N+1 queries
     stmt = (
         select(Patient.id, User.username, Patient.first_name, Patient.last_name)
@@ -87,24 +87,24 @@ def list_patients(
         .where(Patient.caretaker_id == caretaker.id)
     )
 
-    results = db.execute(stmt).all()
+    results = (await db.execute(stmt)).all()
     return [PatientListItem.model_validate(row) for row in results]
 
 
 @router.get("/{username}", response_model=PatientProfileResponse)
-def get_patient_profile(
+async def get_patient_profile(
     username: str,
     current_user: User = Depends(require_role("caretaker")),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> PatientProfileResponse:
     # Get the full profile of a patient linked to this caretaker.
-    caretaker = _get_caretaker_profile(current_user, db)
+    caretaker = await _get_caretaker_profile(current_user, db)
 
-    patient_user = db.scalar(select(User).where(User.username == username, User.role == "patient"))
+    patient_user = await db.scalar(select(User).where(User.username == username, User.role == "patient"))
     if patient_user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient user not found")
 
-    patient = db.scalar(select(Patient).where(Patient.user_id == patient_user.id))
+    patient = await db.scalar(select(Patient).where(Patient.user_id == patient_user.id))
     if patient is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient profile not found")
 
