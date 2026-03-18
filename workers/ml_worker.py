@@ -5,7 +5,7 @@ import os
 import signal
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from app.models import WindowReport, AnomalyLog
+from app.models.orm import WindowReport, AnomalyLog
 
 from aiokafka import AIOKafkaConsumer
 
@@ -17,13 +17,13 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# ตั้งค่า Logging ให้อ่านง่ายเวลารันใน Docker
+# Setup Logging for clear Docker output
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] ML_WORKER — %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
 )
 log = logging.getLogger(__name__)
 
-# Configuration ของ Environment var
+# Environment variables configuration
 KAFKA_BROKER_URL = os.getenv("KAFKA_BROKER_URL")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC")
 KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID")
@@ -51,7 +51,7 @@ def save_to_database(report_dict, anomaly_dict=None):
             db.rollback() 
             log.error(f"Database Insert Failed: {e}")
 
-def create_window_report_json(ml_result, patient_id):
+def create_window_report_json(ml_result, patient_id, system):
     # WindowReport
     report = {
         "window_report_id": str(uuid.uuid4()), # new UUID
@@ -85,21 +85,19 @@ def create_window_report_json(ml_result, patient_id):
         report["gait_health"] = ml_result.get("gait_health")
         report["anomaly_score"] = ml_result.get("anomaly_score")
         
-        metrics = ml_result.get("metrics", {})
-        report["max_gyr_ms"] = metrics.get("max_gyr_ms")
-        report["val_gyr_hs"] = metrics.get("val_gyr_hs")
-        report["swing_time"] = metrics.get("swing_time")
-        report["stance_time"] = metrics.get("stance_time")
-        report["stride_time"] = metrics.get("stride_time")
-        report["stride_cv"] = metrics.get("stride_cv")
-        report["n_strides"] = metrics.get("n_strides")
+        params = ml_result.get("params", {}) 
         
-        # ดึง Steps สะสมจากตัว System ออกมาตรงๆ เลย
+        report["max_gyr_ms"] = params.get("max_gyr_ms")
+        report["val_gyr_hs"] = params.get("val_gyr_hs")
+        report["swing_time"] = params.get("swing_time")
+        report["stance_time"] = params.get("stance_time")
+        report["stride_time"] = params.get("stride_time")
+        report["stride_cv"] = params.get("stride_cv")
+        report["n_strides"] = params.get("n_strides")
+        
         report["steps"] = system.total_steps
         report["calories"] = system.total_calories
-        
-        # สมมติระยะทาง: 1 ก้าวเดินเฉลี่ย = 0.7 เมตร (ปรับแก้ตามสูตรจริงของคุณได้)
-        report["distance_m"] = system.total_steps * 0.7 
+        report["distance_m"] = system.total_steps * 0.7
 
     return report
 
@@ -151,33 +149,33 @@ async def run_worker():
                 msg = await asyncio.wait_for(consumer.getone(), timeout=1.0)
                 payload = msg.value
                 
-                # 1. แกะ patient_id ออกมาก่อนเลย (สำคัญมากสำหรับการแยกคน)
+                # 1. Extract patient_id first (crucial for separating users)
                 try:
                     patient_id = int(msg.key.decode('utf-8')) if msg.key else 1
                 except:
                     patient_id = 1
 
                 if isinstance(payload, dict) and payload.get("command") == "START_SESSION":
-                    # แอปส่ง {"command": "START_SESSION", "patient_id": 1} มา
+                    # App sends {"command": "START_SESSION", "patient_id": 1}
                     cmd_patient_id = payload.get("patient_id", patient_id)
-                    log.info(f"รับคำสั่ง START_SESSION: รีเซ็ตโมเดลและล้างท่อสำหรับ Patient {cmd_patient_id}")
+                    log.info(f"Received START_SESSION command: Resetting model and clearing pipeline for Patient {cmd_patient_id}")
                     
-                    # รีเซ็ตระบบใหม่เอี่ยมให้กับคนไข้คนนี้
+                    # Reset the system completely for this patient
                     active_systems[cmd_patient_id] = GaitSystem()
                     active_buffers[cmd_patient_id] = []
                     continue 
 
-                # 3. เตรียม System และ Buffer ประจำตัวคนไข้
-                # (ถ้าเพิ่งส่งข้อมูลมาครั้งแรก และยังไม่มีชื่อในระบบ ให้สร้างใหม่)
+                # 3. Prepare System and Buffer for the patient
+                # (If this is the first data sent and not yet in the system, create an instance)
                 if patient_id not in active_systems:
                     active_systems[patient_id] = GaitSystem()
                     active_buffers[patient_id] = []
                 
-                # ดึงตัวแทนของคนไข้รายนี้ออกมาทำงาน
+                # Retrieve the instance for this patient to work on
                 system = active_systems[patient_id]
                 buffer = active_buffers[patient_id]
 
-                # 4. ดึงข้อมูลก้าวเดิน (Data Ingestion)
+                # 4. Retrieve gait data (Data Ingestion)
                 samples = []
                 if isinstance(payload, dict):
                     raw = payload.get("gyro_z")
@@ -202,10 +200,10 @@ async def run_worker():
                 if valid_count == 0:
                     continue
 
-                # 5. ประมวลผลทีละ 100 ก้อน
+                # 5. Process in chunks of 100
                 while len(buffer) >= 100:
                     chunk = buffer[:100]
-                    # ตัดก้อนเก่าทิ้ง
+                    # Remove old chunk
                     active_buffers[patient_id] = buffer[100:] 
                     buffer = active_buffers[patient_id]
 
@@ -214,15 +212,21 @@ async def run_worker():
                     if result:
                         log.info(f"[Patient {patient_id}] ML Report: {result.get('type')}")
                         
-                        # สร้าง JSON และเซฟลง DB
                         window_report_data = create_window_report_json(result, patient_id, system)
-                        anomaly_log_data = None
+                        
+                        # Save to DB only when status is MONITORING 
+                        if window_report_data["status"] == "MONITORING":
+                            anomaly_log_data = None
 
-                        if window_report_data.get("gait_health") == "ANOMALY_DETECTED":
-                            anomaly_log_data = create_anomaly_log_json(result, window_report_data["window_report_id"], patient_id)
-                            log.warning(f"[Patient {patient_id}] Anomaly Detected!")
+                            if window_report_data.get("gait_health") == "ANOMALY_DETECTED":
+                                anomaly_log_data = create_anomaly_log_json(result, window_report_data["window_report_id"], patient_id)
+                                log.warning(f"🚨 [Patient {patient_id}] Anomaly Detected!")
 
-                        await asyncio.to_thread(save_to_database, window_report_data, anomaly_log_data)
+                            await asyncio.to_thread(save_to_database, window_report_data, anomaly_log_data)
+                        
+                        else:
+                            # Skip saving if in CALIBRATING phase
+                            log.info(f"⏳ [Patient {patient_id}] Calibrating phase... Skipping DB save")
 
             except TimeoutError:
                 continue
