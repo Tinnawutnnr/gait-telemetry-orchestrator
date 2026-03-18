@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.get("/me", response_model=MqttCredential)
-def get_mqtt_credential_for_patient(
+async def get_mqtt_credential_for_patient(
     # This endpoint is only for patients.
     # The mobile app will use these credentials to publish telemetry data on behalf of the patient.
     current_user: User = Depends(require_role("patient")),

@@ -4,8 +4,7 @@ from alembic.config import Config
 from httpx import ASGITransport, AsyncClient
 import pytest
 import pytest_asyncio
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from alembic import command
@@ -20,7 +19,8 @@ if not _test_db_url or "gait_test" not in _test_db_url.lower():
         "CRITICAL ERROR: 'TEST_DATABASE_URL' is missing or does not contain the word 'gait_test'. "
         "Running tests against a production or dev database is strictly prohibited to prevent data loss."
     )
-_engine = create_engine(_test_db_url, poolclass=NullPool)
+_async_test_db_url = _test_db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+_engine = create_async_engine(_async_test_db_url, poolclass=NullPool)
 
 # Reusable constants for test users
 TEST_PASSWORD: str = "secureP@ss123"  # noqa: S105
@@ -40,40 +40,40 @@ def _apply_migrations():
 
 
 # ── Per-test transactional isolation ─────────────────────────────────────────
-@pytest.fixture()
-def db_session(_apply_migrations):
+@pytest_asyncio.fixture()
+async def db_session(_apply_migrations):
     # Every test runs inside an outer transaction that is rolled back at the end.
     # The test thread and the FastAPI threadpool each get their own Session
     # to avoid cross-thread Session sharing, but both are bound to the same
     # connection/transaction so the rollback reverts all changes.
-    connection = _engine.connect()
-    transaction = connection.begin()
+    connection = await _engine.connect()
+    transaction = await connection.begin()
 
     # Override: each request gets a fresh Session on the shared connection.
-    def _override_get_db():
-        req_session = Session(bind=connection, join_transaction_mode="create_savepoint")
+    async def _override_get_db():
+        req_session = AsyncSession(bind=connection, join_transaction_mode="create_savepoint")
         try:
             yield req_session
         finally:
-            req_session.close()
+            await req_session.close()
 
     app.dependency_overrides[get_db] = _override_get_db
 
     # Separate session for test-side setup and assertions.
-    session = Session(bind=connection, join_transaction_mode="create_savepoint")
+    session = AsyncSession(bind=connection, join_transaction_mode="create_savepoint")
 
     yield session
 
-    session.close()
-    transaction.rollback()
-    connection.close()
+    await session.close()
+    await transaction.rollback()
+    await connection.close()
     app.dependency_overrides.pop(get_db, None)
 
 
 # ── User factories ───────────────────────────────────────────────────────────
 # These create persisted users with known credentials, so we can test authentication and role-based access control.
-@pytest.fixture()
-def test_user(db_session: Session) -> User:
+@pytest_asyncio.fixture()
+async def test_user(db_session: AsyncSession) -> User:
     # A persisted caretaker user with a known password.
     user = User(
         username=CARETAKER_USERNAME,
@@ -81,12 +81,12 @@ def test_user(db_session: Session) -> User:
         role="caretaker",
     )
     db_session.add(user)
-    db_session.flush()
+    await db_session.flush()
     return user
 
 
-@pytest.fixture()
-def patient_user(db_session: Session) -> User:
+@pytest_asyncio.fixture()
+async def patient_user(db_session: AsyncSession) -> User:
 
     # A persisted patient user with a known password.
     user = User(
@@ -95,7 +95,7 @@ def patient_user(db_session: Session) -> User:
         role="patient",
     )
     db_session.add(user)
-    db_session.flush()
+    await db_session.flush()
     return user
 
 
@@ -108,7 +108,7 @@ def _bearer_headers(user: User) -> dict[str, str]:
 
 # ── HTTP client fixtures ─────────────────────────────────────────────────────
 @pytest_asyncio.fixture()
-async def client(db_session: Session):  # noqa: ARG001
+async def client(db_session: AsyncSession):  # noqa: ARG001
     # Unauthenticated httpx.AsyncClient backed by the test DB session.
     transport = ASGITransport(app=app)  # type: ignore[arg-type]
     async with AsyncClient(transport=transport, base_url="http://testserver") as ac:
