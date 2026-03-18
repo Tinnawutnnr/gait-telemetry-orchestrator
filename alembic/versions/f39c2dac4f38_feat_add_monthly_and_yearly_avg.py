@@ -7,13 +7,13 @@ Create Date: 2026-03-18 05:52:41.392193
 
 from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = 'f39c2dac4f38'
-down_revision: str | None = '736d554f1558'
+revision: str = "f39c2dac4f38"
+down_revision: str | None = "736d554f1558"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -41,7 +41,9 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("monthly_report_id"),
     )
-    op.create_index("ix_monthly_averages_patient_month", "monthly_averages", ["patient_id", "report_month"], unique=True)
+    op.create_index(
+        "ix_monthly_averages_patient_month", "monthly_averages", ["patient_id", "report_month"], unique=True
+    )
 
     op.create_table(
         "yearly_averages",
