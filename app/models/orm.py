@@ -11,6 +11,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -105,7 +106,7 @@ class WindowReport(Base):
 
     window_report_id: Mapped[str] = mapped_column(String, primary_key=True)
     patient_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("patients.id"), index=True)
-    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), primary_key=True, index=True)
 
     status: Mapped[str | None] = mapped_column(String)
     gait_health: Mapped[str | None] = mapped_column(String)
@@ -136,6 +137,7 @@ class WindowReport(Base):
             "gait_health IN ('NORMAL', 'ANOMALY_DETECTED')",
             name="ck_window_reports_gait_health",
         ),
+        {"postgresql_partition_by": "RANGE (timestamp)"},
     )
 
     def __repr__(self) -> str:
@@ -260,12 +262,10 @@ class AnomalyLog(Base):
     anomaly_id: Mapped[str] = mapped_column(String, primary_key=True)
     window_id: Mapped[str] = mapped_column(
         String,
-        ForeignKey("window_reports.window_report_id"),
-        unique=True,
         index=True,
     )
     patient_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("patients.id", ondelete="RESTRICT"), index=True)
-    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), primary_key=True, index=True)
 
     anomaly_score: Mapped[float | None] = mapped_column(Float)
     root_cause_feature: Mapped[str | None] = mapped_column(String)
@@ -275,6 +275,14 @@ class AnomalyLog(Base):
 
     patient: Mapped[Patient] = relationship(back_populates="anomaly_logs")
     window_report: Mapped[WindowReport] = relationship(back_populates="anomaly_log")
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["window_id", "timestamp"],
+            ["window_reports.window_report_id", "window_reports.timestamp"],
+        ),
+        {"postgresql_partition_by": "RANGE (timestamp)"},
+    )
 
     def __repr__(self) -> str:
         return f"<AnomalyLog id={self.anomaly_id!r} score={self.anomaly_score}>"
