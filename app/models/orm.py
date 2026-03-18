@@ -91,8 +91,8 @@ class Patient(Base):
     caretaker: Mapped[Caretaker | None] = relationship(back_populates="patients")
     window_reports: Mapped[list[WindowReport]] = relationship(back_populates="patient")
     daily_averages: Mapped[list[DailyAverage]] = relationship(back_populates="patient")
-    monthly_averages: Mapped[list["MonthlyAverage"]] = relationship(back_populates="patient")
-    yearly_averages: Mapped[list["YearlyAverage"]] = relationship(back_populates="patient")
+    monthly_averages: Mapped[list[MonthlyAverage]] = relationship(back_populates="patient")
+    yearly_averages: Mapped[list[YearlyAverage]] = relationship(back_populates="patient")
     anomaly_logs: Mapped[list[AnomalyLog]] = relationship(back_populates="patient")
     session_reports: Mapped[list[SessionReport]] = relationship(back_populates="patient")
 
