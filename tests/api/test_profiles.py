@@ -1,5 +1,5 @@
 from httpx import AsyncClient
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.orm import Caretaker, Patient, User
 
@@ -22,10 +22,10 @@ class TestProfileStatus:
         assert body["role"] == "caretaker"
 
     async def test_with_profile_returns_true(
-        self, authorized_client: AsyncClient, test_user, db_session: Session
+        self, authorized_client: AsyncClient, test_user, db_session: AsyncSession
     ) -> None:
         db_session.add(Caretaker(user_id=test_user.id, first_name="Jane", last_name="Doe"))
-        db_session.flush()
+        await db_session.flush()
 
         resp = await authorized_client.get(_STATUS)
         assert resp.status_code == 200
@@ -39,12 +39,12 @@ class TestProfileStatus:
         assert body["has_profile"] is False
 
     async def test_patient_with_profile_returns_true(
-        self, patient_client: AsyncClient, patient_user: User, db_session: Session
+        self, patient_client: AsyncClient, patient_user: User, db_session: AsyncSession
     ) -> None:
         db_session.add(
             Patient(user_id=patient_user.id, first_name="John", last_name="Smith", age=30, height=175.0, weight=70.0)
         )
-        db_session.flush()
+        await db_session.flush()
 
         resp = await patient_client.get(_STATUS)
         assert resp.status_code == 200
@@ -88,10 +88,10 @@ class TestCreateProfile:
         assert body["first_name"] == "John"
 
     async def test_duplicate_profile_returns_409(
-        self, authorized_client: AsyncClient, test_user, db_session: Session
+        self, authorized_client: AsyncClient, test_user, db_session: AsyncSession
     ) -> None:
         db_session.add(Caretaker(user_id=test_user.id, first_name="Jane", last_name="Doe"))
-        db_session.flush()
+        await db_session.flush()
 
         resp = await authorized_client.post(_PROFILE, json={"first_name": "Jane", "last_name": "Doe"})
         assert resp.status_code == 409
@@ -116,9 +116,11 @@ class TestCreateProfile:
 class TestGetProfile:
     # GET /api/v1/profiles/me
 
-    async def test_caretaker_returns_200(self, authorized_client: AsyncClient, test_user, db_session: Session) -> None:
+    async def test_caretaker_returns_200(
+        self, authorized_client: AsyncClient, test_user, db_session: AsyncSession
+    ) -> None:
         db_session.add(Caretaker(user_id=test_user.id, first_name="Jane", last_name="Doe"))
-        db_session.flush()
+        await db_session.flush()
 
         resp = await authorized_client.get(_PROFILE)
         assert resp.status_code == 200
@@ -127,12 +129,12 @@ class TestGetProfile:
         assert body["last_name"] == "Doe"
 
     async def test_patient_returns_200(
-        self, patient_client: AsyncClient, patient_user: User, db_session: Session
+        self, patient_client: AsyncClient, patient_user: User, db_session: AsyncSession
     ) -> None:
         db_session.add(
             Patient(user_id=patient_user.id, first_name="John", last_name="Smith", age=30, height=175.0, weight=70.0)
         )
-        db_session.flush()
+        await db_session.flush()
 
         resp = await patient_client.get(_PROFILE)
         assert resp.status_code == 200
@@ -160,10 +162,10 @@ class TestUpdateProfile:
     # PUT /api/v1/profiles/me
 
     async def test_caretaker_update_returns_200(
-        self, authorized_client: AsyncClient, test_user, db_session: Session
+        self, authorized_client: AsyncClient, test_user, db_session: AsyncSession
     ) -> None:
         db_session.add(Caretaker(user_id=test_user.id, first_name="Jane", last_name="Doe"))
-        db_session.flush()
+        await db_session.flush()
 
         resp = await authorized_client.put(_PROFILE, json={"first_name": "Janet", "last_name": "Smith"})
         assert resp.status_code == 200
@@ -172,12 +174,12 @@ class TestUpdateProfile:
         assert body["last_name"] == "Smith"
 
     async def test_patient_update_returns_200(
-        self, patient_client: AsyncClient, patient_user: User, db_session: Session
+        self, patient_client: AsyncClient, patient_user: User, db_session: AsyncSession
     ) -> None:
         db_session.add(
             Patient(user_id=patient_user.id, first_name="John", last_name="Smith", age=30, height=175.0, weight=70.0)
         )
-        db_session.flush()
+        await db_session.flush()
 
         resp = await patient_client.put(
             _PROFILE,
