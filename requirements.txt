@@ -23,3 +23,6 @@ aiomqtt>=2.3,<3
 
 #test
 paho-mqtt>=2.0,<3
+
+#Scheduler
+apscheduler==3.10.4
