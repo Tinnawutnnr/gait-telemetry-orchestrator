@@ -1,17 +1,19 @@
 import asyncio
+from datetime import UTC, datetime
 import json
 import logging
 import os
 import signal
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from app.models.orm import WindowReport, AnomalyLog
+import uuid
 
 from aiokafka import AIOKafkaConsumer
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
+from app.models.orm import AnomalyLog, WindowReport
 from workers.realtime_processor import GaitSystem
 
-#DB conneciton
+# DB conneciton
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 engine = create_engine(DATABASE_URL)
@@ -31,37 +33,34 @@ KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID")
 system = GaitSystem()
 _shutdown_event = asyncio.Event()
 
-import uuid
-from datetime import datetime, timezone
 
 def save_to_database(report_dict, anomaly_dict=None):
     with SessionLocal() as db:
         try:
             new_report = WindowReport(**report_dict)
             db.add(new_report)
-            
+
             if anomaly_dict:
                 new_anomaly = AnomalyLog(**anomaly_dict)
                 db.add(new_anomaly)
-                
+
             db.commit()
             log.info(f"Saved WindowReport (ID: {report_dict['window_report_id']}) to DB.")
-            
+
         except Exception as e:
-            db.rollback() 
+            db.rollback()
             log.error(f"Database Insert Failed: {e}")
+
 
 def create_window_report_json(ml_result, patient_id, system):
     # WindowReport
     report = {
-        "window_report_id": str(uuid.uuid4()), # new UUID
+        "window_report_id": str(uuid.uuid4()),  # new UUID
         "patient_id": patient_id,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        
+        "timestamp": datetime.now(UTC).isoformat(),
         "status": None,
         "gait_health": None,
         "anomaly_score": None,
-        
         "max_gyr_ms": None,
         "val_gyr_hs": None,
         "swing_time": None,
@@ -69,10 +68,9 @@ def create_window_report_json(ml_result, patient_id, system):
         "stride_time": None,
         "stride_cv": None,
         "n_strides": None,
-        
         "steps": None,
         "calories": None,
-        "distance_m": None
+        "distance_m": None,
     }
 
     # case 1 : calibrate case
@@ -84,9 +82,9 @@ def create_window_report_json(ml_result, patient_id, system):
         report["status"] = "MONITORING"
         report["gait_health"] = ml_result.get("gait_health")
         report["anomaly_score"] = ml_result.get("anomaly_score")
-        
-        params = ml_result.get("params", {}) 
-        
+
+        params = ml_result.get("params", {})
+
         report["max_gyr_ms"] = params.get("max_gyr_ms")
         report["val_gyr_hs"] = params.get("val_gyr_hs")
         report["swing_time"] = params.get("swing_time")
@@ -94,12 +92,13 @@ def create_window_report_json(ml_result, patient_id, system):
         report["stride_time"] = params.get("stride_time")
         report["stride_cv"] = params.get("stride_cv")
         report["n_strides"] = params.get("n_strides")
-        
+
         report["steps"] = system.total_steps
         report["calories"] = system.total_calories
         report["distance_m"] = system.total_steps * 0.7
 
     return report
+
 
 def create_anomaly_log_json(ml_result, window_report_id, patient_id):
     contribution = ml_result.get("contribution", {})
@@ -107,12 +106,12 @@ def create_anomaly_log_json(ml_result, window_report_id, patient_id):
         "anomaly_id": str(uuid.uuid4()),
         "window_id": window_report_id,
         "patient_id": patient_id,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "anomaly_score": ml_result.get("anomaly_score"),
         "root_cause_feature": contribution.get("feature"),
         "z_score": contribution.get("z_score"),
         "current_val": contribution.get("current_val"),
-        "normal_ref": contribution.get("normal_ref")
+        "normal_ref": contribution.get("normal_ref"),
     }
 
 
@@ -148,29 +147,31 @@ async def run_worker():
             try:
                 msg = await asyncio.wait_for(consumer.getone(), timeout=1.0)
                 payload = msg.value
-                
+
                 # 1. Extract patient_id first (crucial for separating users)
                 try:
-                    patient_id = int(msg.key.decode('utf-8')) if msg.key else 1
+                    patient_id = int(msg.key.decode("utf-8")) if msg.key else 1
                 except:
                     patient_id = 1
 
                 if isinstance(payload, dict) and payload.get("command") == "START_SESSION":
                     # App sends {"command": "START_SESSION", "patient_id": 1}
                     cmd_patient_id = payload.get("patient_id", patient_id)
-                    log.info(f"Received START_SESSION command: Resetting model and clearing pipeline for Patient {cmd_patient_id}")
-                    
+                    log.info(
+                        f"Received START_SESSION cmd: Resetting model and clearing pipeline for Patient {cmd_patient_id}"
+                    )
+
                     # Reset the system completely for this patient
                     active_systems[cmd_patient_id] = GaitSystem()
                     active_buffers[cmd_patient_id] = []
-                    continue 
+                    continue
 
                 # 3. Prepare System and Buffer for the patient
                 # (If this is the first data sent and not yet in the system, create an instance)
                 if patient_id not in active_systems:
                     active_systems[patient_id] = GaitSystem()
                     active_buffers[patient_id] = []
-                
+
                 # Retrieve the instance for this patient to work on
                 system = active_systems[patient_id]
                 buffer = active_buffers[patient_id]
@@ -204,26 +205,28 @@ async def run_worker():
                 while len(buffer) >= 100:
                     chunk = buffer[:100]
                     # Remove old chunk
-                    active_buffers[patient_id] = buffer[100:] 
+                    active_buffers[patient_id] = buffer[100:]
                     buffer = active_buffers[patient_id]
 
                     result = await asyncio.to_thread(system.process_stream_chunk, chunk)
 
                     if result:
                         log.info(f"[Patient {patient_id}] ML Report: {result.get('type')}")
-                        
+
                         window_report_data = create_window_report_json(result, patient_id, system)
-                        
-                        # Save to DB only when status is MONITORING 
+
+                        # Save to DB only when status is MONITORING
                         if window_report_data["status"] == "MONITORING":
                             anomaly_log_data = None
 
                             if window_report_data.get("gait_health") == "ANOMALY_DETECTED":
-                                anomaly_log_data = create_anomaly_log_json(result, window_report_data["window_report_id"], patient_id)
+                                anomaly_log_data = create_anomaly_log_json(
+                                    result, window_report_data["window_report_id"], patient_id
+                                )
                                 log.warning(f"🚨 [Patient {patient_id}] Anomaly Detected!")
 
                             await asyncio.to_thread(save_to_database, window_report_data, anomaly_log_data)
-                        
+
                         else:
                             # Skip saving if in CALIBRATING phase
                             log.info(f"⏳ [Patient {patient_id}] Calibrating phase... Skipping DB save")
