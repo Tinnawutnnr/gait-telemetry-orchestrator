@@ -196,6 +196,62 @@ class DailyAverage(Base):
         return f"<DailyAverage id={self.daily_report_id!r} date={self.report_date}>"
 
 
+class MonthlyAverage(Base):
+    __tablename__ = "monthly_averages"
+
+    monthly_report_id: Mapped[str] = mapped_column(String, primary_key=True)
+    patient_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("patients.id"))
+    report_month: Mapped[str] = mapped_column(String)
+
+    total_windows_analyzed: Mapped[int | None] = mapped_column(Integer)
+    total_steps: Mapped[int | None] = mapped_column(Integer)
+    total_calories: Mapped[float | None] = mapped_column(Float)
+    total_distance_m: Mapped[float | None] = mapped_column(Float)
+
+    avg_max_gyr_ms: Mapped[float | None] = mapped_column(Float)
+    avg_val_gyr_hs: Mapped[float | None] = mapped_column(Float)
+    avg_swing_time: Mapped[float | None] = mapped_column(Float)
+    avg_stance_time: Mapped[float | None] = mapped_column(Float)
+    avg_stride_cv: Mapped[float | None] = mapped_column(Float)
+
+    anomaly_count: Mapped[int | None] = mapped_column(Integer)
+
+    patient: Mapped[Patient] = relationship(back_populates="monthly_averages")
+
+    __table_args__ = (Index("ix_monthly_averages_patient_month", "patient_id", "report_month", unique=True),)
+
+    def __repr__(self) -> str:
+        return f"<MonthlyAverage id={self.monthly_report_id!r} month={self.report_month}>"
+
+
+class YearlyAverage(Base):
+    __tablename__ = "yearly_averages"
+
+    yearly_report_id: Mapped[str] = mapped_column(String, primary_key=True)
+    patient_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("patients.id"))
+    report_year: Mapped[int] = mapped_column(Integer)
+
+    total_windows_analyzed: Mapped[int | None] = mapped_column(Integer)
+    total_steps: Mapped[int | None] = mapped_column(Integer)
+    total_calories: Mapped[float | None] = mapped_column(Float)
+    total_distance_m: Mapped[float | None] = mapped_column(Float)
+
+    avg_max_gyr_ms: Mapped[float | None] = mapped_column(Float)
+    avg_val_gyr_hs: Mapped[float | None] = mapped_column(Float)
+    avg_swing_time: Mapped[float | None] = mapped_column(Float)
+    avg_stance_time: Mapped[float | None] = mapped_column(Float)
+    avg_stride_cv: Mapped[float | None] = mapped_column(Float)
+
+    anomaly_count: Mapped[int | None] = mapped_column(Integer)
+
+    patient: Mapped[Patient] = relationship(back_populates="yearly_averages")
+
+    __table_args__ = (Index("ix_yearly_averages_patient_year", "patient_id", "report_year", unique=True),)
+
+    def __repr__(self) -> str:
+        return f"<YearlyAverage id={self.yearly_report_id!r} year={self.report_year}>"
+
+
 class AnomalyLog(Base):
     __tablename__ = "anomaly_logs"
 
