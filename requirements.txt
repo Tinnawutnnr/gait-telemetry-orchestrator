@@ -2,6 +2,7 @@ fastapi>=0.111,<1
 uvicorn[standard]>=0.29,<1
 sqlalchemy[mypy]>=2.0,<3
 pydantic-settings>=2.2,<3
+pydantic[email]==2.10.1
 psycopg2-binary>=2.9,<3
 asyncpg>=0.29.0
 greenlet>=2.0,<4

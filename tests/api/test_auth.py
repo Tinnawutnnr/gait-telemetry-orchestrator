@@ -1,7 +1,7 @@
 from httpx import AsyncClient
 import pytest
 
-from tests.conftest import CARETAKER_USERNAME, TEST_PASSWORD
+from tests.conftest import CARETAKER_EMAIL, CARETAKER_USERNAME, TEST_PASSWORD
 
 # ── Endpoint URLs ────────────────────────────────────────────────────────────
 _REGISTER = "/api/v1/auth/register"
@@ -17,7 +17,12 @@ class TestRegister:
     async def test_caretaker_returns_201_with_bearer_token(self, client: AsyncClient) -> None:
         resp = await client.post(
             _REGISTER,
-            json={"username": "new_caretaker", "password": TEST_PASSWORD, "role": "caretaker"},
+            json={
+                "username": "new_caretaker",
+                "email": "new_caretaker@example.com",
+                "password": TEST_PASSWORD,
+                "role": "caretaker",
+            },
         )
         assert resp.status_code == 201
         body = resp.json()
@@ -27,7 +32,12 @@ class TestRegister:
     async def test_patient_returns_201(self, client: AsyncClient) -> None:
         resp = await client.post(
             _REGISTER,
-            json={"username": "new_patient", "password": TEST_PASSWORD, "role": "patient"},
+            json={
+                "username": "new_patient",
+                "email": "new_patient@example.com",
+                "password": TEST_PASSWORD,
+                "role": "patient",
+            },
         )
         assert resp.status_code == 201
         assert "access_token" in resp.json()
@@ -35,22 +45,40 @@ class TestRegister:
     async def test_duplicate_username_returns_409(self, client: AsyncClient, test_user) -> None:  # noqa: ARG002
         resp = await client.post(
             _REGISTER,
-            json={"username": CARETAKER_USERNAME, "password": TEST_PASSWORD, "role": "caretaker"},
+            json={
+                "username": CARETAKER_USERNAME,
+                "email": "unique@example.com",
+                "password": TEST_PASSWORD,
+                "role": "caretaker",
+            },
         )
         assert resp.status_code == 409
-        assert "already taken" in resp.json()["detail"].lower()
+        assert "username already taken" in resp.json()["detail"].lower()
+
+    async def test_duplicate_email_returns_409(self, client: AsyncClient, test_user) -> None:  # noqa: ARG002
+        resp = await client.post(
+            _REGISTER,
+            json={
+                "username": "unique_username",
+                "email": CARETAKER_EMAIL,
+                "password": TEST_PASSWORD,
+                "role": "caretaker",
+            },
+        )
+        assert resp.status_code == 409
+        assert "email already taken" in resp.json()["detail"].lower()
 
     async def test_invalid_role_returns_422(self, client: AsyncClient) -> None:
         resp = await client.post(
             _REGISTER,
-            json={"username": "bad_role", "password": TEST_PASSWORD, "role": "admin"},
+            json={"username": "bad_role", "email": "bad_role@example.com", "password": TEST_PASSWORD, "role": "admin"},
         )
         assert resp.status_code == 422
 
     async def test_short_password_returns_422(self, client: AsyncClient) -> None:
         resp = await client.post(
             _REGISTER,
-            json={"username": "short_pw", "password": "abc", "role": "caretaker"},
+            json={"username": "short_pw", "email": "short_pw@example.com", "password": "abc", "role": "caretaker"},
         )
         assert resp.status_code == 422
 
@@ -61,7 +89,7 @@ class TestRegister:
     async def test_username_too_short_returns_422(self, client: AsyncClient) -> None:
         resp = await client.post(
             _REGISTER,
-            json={"username": "ab", "password": TEST_PASSWORD, "role": "caretaker"},
+            json={"username": "ab", "email": "ab@example.com", "password": TEST_PASSWORD, "role": "caretaker"},
         )
         assert resp.status_code == 422
 
@@ -75,7 +103,7 @@ class TestLogin:
     async def test_valid_credentials_returns_bearer_token(self, client: AsyncClient, test_user) -> None:  # noqa: ARG002
         resp = await client.post(
             _LOGIN,
-            data={"username": CARETAKER_USERNAME, "password": TEST_PASSWORD},
+            data={"username": CARETAKER_EMAIL, "password": TEST_PASSWORD},
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -85,20 +113,20 @@ class TestLogin:
     async def test_wrong_password_returns_401(self, client: AsyncClient, test_user) -> None:  # noqa: ARG002
         resp = await client.post(
             _LOGIN,
-            data={"username": CARETAKER_USERNAME, "password": "wrongP@ssword1"},  # noqa: S106
+            data={"username": CARETAKER_EMAIL, "password": "wrongP@ssword1"},  # noqa: S106
         )
         assert resp.status_code == 401
-        assert resp.json()["detail"] == "Incorrect username or password"
+        assert resp.json()["detail"] == "Incorrect email or password"
 
     async def test_nonexistent_user_returns_401(self, client: AsyncClient) -> None:
         resp = await client.post(
             _LOGIN,
-            data={"username": "ghost_user", "password": TEST_PASSWORD},
+            data={"username": "ghost_user@example.com", "password": TEST_PASSWORD},
         )
         assert resp.status_code == 401
 
     async def test_missing_password_returns_422(self, client: AsyncClient) -> None:
-        resp = await client.post(_LOGIN, data={"username": CARETAKER_USERNAME})
+        resp = await client.post(_LOGIN, data={"username": CARETAKER_EMAIL})
         assert resp.status_code == 422
 
     @pytest.mark.parametrize("payload", [{"password": TEST_PASSWORD}, {}])
