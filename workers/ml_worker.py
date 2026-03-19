@@ -10,7 +10,7 @@ from aiokafka import AIOKafkaConsumer
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
-from app.models.orm import AnomalyLog, WindowReport, Patient
+from app.models.orm import AnomalyLog, Patient, WindowReport
 from workers.realtime_processor import GaitSystem
 
 # DB conneciton
@@ -32,6 +32,7 @@ KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID")
 
 system = GaitSystem()
 _shutdown_event = asyncio.Event()
+
 
 def save_to_database(report_dict, anomaly_dict=None):
     with SessionLocal() as db:
@@ -58,7 +59,7 @@ def save_to_database(report_dict, anomaly_dict=None):
 def create_window_report_json(ml_result, patient_id, system, current_time: datetime):
     # WindowReport
     report = {
-        "window_report_id": str(uuid.uuid4()),  
+        "window_report_id": str(uuid.uuid4()),
         "patient_id": patient_id,
         "timestamp": current_time,
         "status": None,
@@ -115,6 +116,7 @@ def create_anomaly_log_json(ml_result, patient_id):
         "normal_ref": contribution.get("normal_ref"),
     }
 
+
 def get_patient_profile(patient_id):
     with SessionLocal() as db:
         try:
@@ -123,7 +125,7 @@ def get_patient_profile(patient_id):
                 return {"weight": patient.weight, "height": patient.height}
         except Exception as e:
             log.error(f"Failed to fetch patient profile for {patient_id}: {e}")
-    return {"weight": 70.0, "height": 175.0} # Fallback defaults
+    return {"weight": 70.0, "height": 175.0}  # Fallback defaults
 
 
 def _signal_handler():
@@ -162,21 +164,21 @@ async def run_worker():
                 # 1. Extract patient_id first (crucial for separating users)
                 try:
                     patient_id = int(msg.key.decode("utf-8")) if msg.key else 1
-                except:
+                except (ValueError, UnicodeDecodeError, AttributeError):
                     patient_id = 1
 
                 if isinstance(payload, dict) and payload.get("command") == "START_SESSION":
                     # App sends {"command": "START_SESSION", "patient_id": 1}
                     cmd_patient_id = payload.get("patient_id", patient_id)
                     log.info(
-                        f"Received START_SESSION cmd: Resetting model and clearing pipeline for Patient {cmd_patient_id}"
+                        "Received START_SESSION cmd: Resetting model and clearing pipeline for Patient %s",
+                        cmd_patient_id,
                     )
 
                     # Reset the system completely for this patient
                     profile = get_patient_profile(cmd_patient_id)
                     active_systems[cmd_patient_id] = GaitSystem(
-                        user_weight_kg=profile["weight"], 
-                        user_height_cm=profile["height"]
+                        user_weight_kg=profile["weight"], user_height_cm=profile["height"]
                     )
                     active_buffers[cmd_patient_id] = []
                     continue
@@ -185,8 +187,7 @@ async def run_worker():
                 if patient_id not in active_systems:
                     profile = get_patient_profile(patient_id)
                     active_systems[patient_id] = GaitSystem(
-                        user_weight_kg=profile["weight"], 
-                        user_height_cm=profile["height"]
+                        user_weight_kg=profile["weight"], user_height_cm=profile["height"]
                     )
                     active_buffers[patient_id] = []
 

@@ -101,7 +101,6 @@ class Patient(Base):
     monthly_averages: Mapped[list[MonthlyAverage]] = relationship(back_populates="patient")
     yearly_averages: Mapped[list[YearlyAverage]] = relationship(back_populates="patient")
     anomaly_logs: Mapped[list[AnomalyLog]] = relationship(back_populates="patient")
-    
 
     def __repr__(self) -> str:
         return f"<Patient id={self.id} name={self.first_name!r} {self.last_name!r}>"
@@ -179,12 +178,13 @@ class DailyAverage(Base):
     def __repr__(self) -> str:
         return f"<DailyAverage id={self.daily_report_id!r} date={self.report_date}>"
 
+
 class WeeklyAverage(Base):
     __tablename__ = "weekly_averages"
 
     weekly_report_id: Mapped[str] = mapped_column(String, primary_key=True)
     patient_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("patients.id"))
-    
+
     report_week: Mapped[str] = mapped_column(String)
 
     total_windows_analyzed: Mapped[int | None] = mapped_column(Integer)
@@ -206,6 +206,8 @@ class WeeklyAverage(Base):
 
     def __repr__(self) -> str:
         return f"<WeeklyAverage id={self.weekly_report_id!r} week={self.report_week}>"
+
+
 class MonthlyAverage(Base):
     __tablename__ = "monthly_averages"
 

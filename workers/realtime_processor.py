@@ -13,11 +13,12 @@ WINDOW_SAMPLES = WINDOW_SECONDS * FS
 CALIBRATION_WINDOWS = 10
 MAX_BUFFER_SIZE = 50
 
+
 class GaitSystem:
     def __init__(self, user_weight_kg=70.0, user_height_cm=175.0):
         self.user_weight_kg = user_weight_kg
         self.user_height_cm = user_height_cm
-        
+
         self.raw_buffer = []
         self.normal_windows = []  # Buffer for training model
 

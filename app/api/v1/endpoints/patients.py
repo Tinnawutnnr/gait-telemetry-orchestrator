@@ -1,13 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from datetime import date
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import date
 
 from app.core.database import get_db
 from app.core.dependencies import require_role
 from app.models.orm import Patient, User
 from app.schemas.patients import PatientCaretakerStatus
-
 from workers.batch_aggregator import calculate_averages_for_date
 
 router = APIRouter(prefix="/patients", tags=["patients"])
@@ -33,19 +33,19 @@ async def patient_caretaker_status(
 async def stop_gait_session(
     background_tasks: BackgroundTasks,
     current_user: User = Depends(require_role("patient")),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     patient = await db.scalar(select(Patient).where(Patient.user_id == current_user.id))
-    
+
     if not patient:
-         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient profile not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient profile not found.")
 
     today = date.today()
-    
+
     # Pass patient.id
     background_tasks.add_task(calculate_averages_for_date, today, patient.id)
-    
+
     return {
-        "status": "success", 
-        "message": "Gait monitoring session stopped. Aggregating today's data in the background."
+        "status": "success",
+        "message": "Gait monitoring session stopped. Aggregating today's data in the background.",
     }
