@@ -162,26 +162,30 @@ async def run_worker():
                 msg = await asyncio.wait_for(consumer.getone(), timeout=1.0)
                 payload = msg.value
 
-                # 1. Extract patient_id first (crucial for separating users)
-                try:
-                    patient_id = int(msg.key.decode("utf-8")) if msg.key else 1
-                except (ValueError, UnicodeDecodeError, AttributeError):
-                    patient_id = 1
+                # 1. Extract patient_id first
+                patient_id = None
 
-                if isinstance(payload, dict) and payload.get("command") == "START_SESSION":
-                    # App sends {"command": "START_SESSION", "patient_id": 1}
-                    cmd_patient_id = payload.get("patient_id", patient_id)
-                    log.info(
-                        "Received START_SESSION cmd: Resetting model and clearing pipeline for Patient %s",
-                        cmd_patient_id,
-                    )
+                if msg.key:
+                    try:
+                        patient_id = int(msg.key.decode("utf-8"))
+                    except (ValueError, UnicodeDecodeError, AttributeError):
+                        patient_id = None
 
-                    # Reset the system completely for this patient
-                    profile = get_patient_profile(cmd_patient_id)
-                    active_systems[cmd_patient_id] = GaitSystem(
-                        user_weight_kg=profile["weight"], user_height_cm=profile["height"]
+                if patient_id is None and isinstance(payload, dict):
+                    raw_patient_id = payload.get("patient_id")
+                    try:
+                        if raw_patient_id is not None:
+                            patient_id = int(raw_patient_id)
+                    except (TypeError, ValueError):
+                        patient_id = None
+
+                if patient_id is None:
+                    log.warning(
+                        "Dropping telemetry: missing/invalid patient_id "
+                        "(kafka_key_present=%s, payload_type=%s)",
+                        bool(msg.key),
+                        type(payload).__name__,
                     )
-                    active_buffers[cmd_patient_id] = []
                     continue
 
                 # Prepare System and Buffer for the patient
