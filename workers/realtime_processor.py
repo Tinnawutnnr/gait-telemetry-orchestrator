@@ -13,12 +13,11 @@ WINDOW_SAMPLES = WINDOW_SECONDS * FS
 CALIBRATION_WINDOWS = 10
 MAX_BUFFER_SIZE = 50
 
-USER_WEIGHT_KG = 70.0
-USER_HEIGHT_CM = 175.0
-
-
 class GaitSystem:
-    def __init__(self):
+    def __init__(self, user_weight_kg=70.0, user_height_cm=175.0):
+        self.user_weight_kg = user_weight_kg
+        self.user_height_cm = user_height_cm
+        
         self.raw_buffer = []
         self.normal_windows = []  # Buffer for training model
 
@@ -73,7 +72,7 @@ class GaitSystem:
             self.total_steps += new_steps
             cadence = new_steps * 60
             mets = 4.0 if cadence >= 100 else 3.0
-            kcal_per_sec = (mets * USER_WEIGHT_KG * 1) / 3600
+            kcal_per_sec = (mets * self.user_weight_kg * 1) / 3600
             self.total_calories += kcal_per_sec
 
     def _analyze_window(self, raw_signal):
@@ -102,8 +101,8 @@ class GaitSystem:
         window_cadence = (window_steps / WINDOW_SECONDS) * 60
 
         mets = 4.0 if window_cadence >= 100 else 3.0
-        window_kcal = (mets * USER_WEIGHT_KG * 1) * (WINDOW_SECONDS / 3600)
-        window_dist = window_steps * USER_HEIGHT_CM * 0.415 / 100
+        window_kcal = (mets * self.user_weight_kg * 1) * (WINDOW_SECONDS / 3600)
+        window_dist = window_steps * self.user_height_cm * 0.415 / 100
         # ------------------------------------------------------------------
 
         # --- PHASE 1: CALIBRATION ---

@@ -7,10 +7,10 @@ import signal
 import uuid
 
 from aiokafka import AIOKafkaConsumer
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
-from app.models.orm import AnomalyLog, WindowReport
+from app.models.orm import AnomalyLog, WindowReport, Patient
 from workers.realtime_processor import GaitSystem
 
 # DB conneciton
@@ -33,15 +33,18 @@ KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID")
 system = GaitSystem()
 _shutdown_event = asyncio.Event()
 
-
 def save_to_database(report_dict, anomaly_dict=None):
     with SessionLocal() as db:
         try:
             new_report = WindowReport(**report_dict)
             db.add(new_report)
+            db.flush()
 
             if anomaly_dict:
-                new_anomaly = AnomalyLog(**anomaly_dict)
+                anomaly_payload = dict(anomaly_dict)
+                anomaly_payload["window_id"] = new_report.window_report_id
+                anomaly_payload["timestamp"] = new_report.timestamp
+                new_anomaly = AnomalyLog(**anomaly_payload)
                 db.add(new_anomaly)
 
             db.commit()
@@ -52,12 +55,12 @@ def save_to_database(report_dict, anomaly_dict=None):
             log.error(f"Database Insert Failed: {e}")
 
 
-def create_window_report_json(ml_result, patient_id, system):
+def create_window_report_json(ml_result, patient_id, system, current_time: datetime):
     # WindowReport
     report = {
-        "window_report_id": str(uuid.uuid4()),  # new UUID
+        "window_report_id": str(uuid.uuid4()),  
         "patient_id": patient_id,
-        "timestamp": datetime.now(UTC).isoformat(),
+        "timestamp": current_time,
         "status": None,
         "gait_health": None,
         "anomaly_score": None,
@@ -100,19 +103,27 @@ def create_window_report_json(ml_result, patient_id, system):
     return report
 
 
-def create_anomaly_log_json(ml_result, window_report_id, patient_id):
+def create_anomaly_log_json(ml_result, patient_id):
     contribution = ml_result.get("contribution", {})
     return {
         "anomaly_id": str(uuid.uuid4()),
-        "window_id": window_report_id,
         "patient_id": patient_id,
-        "timestamp": datetime.now(UTC).isoformat(),
         "anomaly_score": ml_result.get("anomaly_score"),
         "root_cause_feature": contribution.get("feature"),
         "z_score": contribution.get("z_score"),
         "current_val": contribution.get("current_val"),
         "normal_ref": contribution.get("normal_ref"),
     }
+
+def get_patient_profile(patient_id):
+    with SessionLocal() as db:
+        try:
+            patient = db.scalar(select(Patient).where(Patient.id == patient_id))
+            if patient:
+                return {"weight": patient.weight, "height": patient.height}
+        except Exception as e:
+            log.error(f"Failed to fetch patient profile for {patient_id}: {e}")
+    return {"weight": 70.0, "height": 175.0} # Fallback defaults
 
 
 def _signal_handler():
@@ -162,21 +173,28 @@ async def run_worker():
                     )
 
                     # Reset the system completely for this patient
-                    active_systems[cmd_patient_id] = GaitSystem()
+                    profile = get_patient_profile(cmd_patient_id)
+                    active_systems[cmd_patient_id] = GaitSystem(
+                        user_weight_kg=profile["weight"], 
+                        user_height_cm=profile["height"]
+                    )
                     active_buffers[cmd_patient_id] = []
                     continue
 
-                # 3. Prepare System and Buffer for the patient
-                # (If this is the first data sent and not yet in the system, create an instance)
+                # Prepare System and Buffer for the patient
                 if patient_id not in active_systems:
-                    active_systems[patient_id] = GaitSystem()
+                    profile = get_patient_profile(patient_id)
+                    active_systems[patient_id] = GaitSystem(
+                        user_weight_kg=profile["weight"], 
+                        user_height_cm=profile["height"]
+                    )
                     active_buffers[patient_id] = []
 
                 # Retrieve the instance for this patient to work on
                 system = active_systems[patient_id]
                 buffer = active_buffers[patient_id]
 
-                # 4. Retrieve gait data (Data Ingestion)
+                # Retrieve gait data (Data Ingestion)
                 samples = []
                 if isinstance(payload, dict):
                     raw = payload.get("gyro_z")
@@ -201,7 +219,7 @@ async def run_worker():
                 if valid_count == 0:
                     continue
 
-                # 5. Process in chunks of 100
+                # Process in chunks of 100
                 while len(buffer) >= 100:
                     chunk = buffer[:100]
                     # Remove old chunk
@@ -213,23 +231,23 @@ async def run_worker():
                     if result:
                         log.info(f"[Patient {patient_id}] ML Report: {result.get('type')}")
 
-                        window_report_data = create_window_report_json(result, patient_id, system)
+                        current_timestamp = datetime.now(UTC)
+
+                        window_report_data = create_window_report_json(result, patient_id, system, current_timestamp)
 
                         # Save to DB only when status is MONITORING
                         if window_report_data["status"] == "MONITORING":
                             anomaly_log_data = None
 
                             if window_report_data.get("gait_health") == "ANOMALY_DETECTED":
-                                anomaly_log_data = create_anomaly_log_json(
-                                    result, window_report_data["window_report_id"], patient_id
-                                )
-                                log.warning(f"🚨 [Patient {patient_id}] Anomaly Detected!")
+                                anomaly_log_data = create_anomaly_log_json(result, patient_id)
+                                log.warning(f"[Patient {patient_id}] Anomaly Detected!")
 
                             await asyncio.to_thread(save_to_database, window_report_data, anomaly_log_data)
 
                         else:
                             # Skip saving if in CALIBRATING phase
-                            log.info(f"⏳ [Patient {patient_id}] Calibrating phase... Skipping DB save")
+                            log.info(f"[Patient {patient_id}] Calibrating phase... Skipping DB save")
 
             except TimeoutError:
                 continue
