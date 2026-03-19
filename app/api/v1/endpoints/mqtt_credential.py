@@ -19,15 +19,15 @@ async def get_mqtt_credential_for_patient(
     # This endpoint is only for patients.
     # The mobile app will use these credentials to publish telemetry data on behalf of the patient.
     current_user: User = Depends(require_role("patient")),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ) -> MqttCredential:
     logger.info("Generating MQTT credentials for user %s", current_user.username)
-    patient  = await db.scalar(select(Patient).where(Patient.user_id == current_user.id))
+    patient = await db.scalar(select(Patient).where(Patient.user_id == current_user.id))
 
     if patient.telemetry_token is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Telemetry configuration not found. Please contact support or re-calibrate."
+            detail="Telemetry configuration not found. Please contact support or re-calibrate.",
         )
 
     return MqttCredential(

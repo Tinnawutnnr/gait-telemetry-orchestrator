@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,7 +8,6 @@ from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.models.orm import Caretaker, Patient, User
 from app.schemas.profiles import CaretakerProfile, PatientProfile, ProfileResponse, ProfileStatus
-import uuid
 
 router = APIRouter(prefix="/profiles", tags=["profiles"])
 
