@@ -18,8 +18,17 @@ async def get_mqtt_credential_for_patient(
     current_user: User = Depends(require_role("patient")),
 ) -> MqttCredential:
     logger.info("Generating MQTT credentials for user %s", current_user.username)
+    patient  = await db.scalar(select(Patient).where(Patient.user_id == current_user.id))
+
+    if patient.telemetry_token is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Telemetry configuration not found. Please contact support or re-calibrate."
+        )
+
     return MqttCredential(
         broker_url=settings.MQTT_BROKER,
         username=settings.MQTT_PUB_USERNAME,
         password=settings.MQTT_PUB_PASSWORD,
+        telemetry_token=patient.telemetry_token,
     )

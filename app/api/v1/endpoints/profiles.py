@@ -6,6 +6,7 @@ from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.models.orm import Caretaker, Patient, User
 from app.schemas.profiles import CaretakerProfile, PatientProfile, ProfileResponse, ProfileStatus
+import uuid
 
 router = APIRouter(prefix="/profiles", tags=["profiles"])
 
@@ -50,6 +51,7 @@ async def create_profile(
             age=body.age,
             height=body.height,
             weight=body.weight,
+            telemetry_token=str(uuid.uuid4()),
         )
 
     try:
