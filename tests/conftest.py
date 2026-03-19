@@ -25,7 +25,9 @@ _engine = create_async_engine(_async_test_db_url, poolclass=NullPool)
 # Reusable constants for test users
 TEST_PASSWORD: str = "secureP@ss123"  # noqa: S105
 CARETAKER_USERNAME: str = "caretaker_jane"
+CARETAKER_EMAIL: str = "caretaker@example.com"
 PATIENT_USERNAME: str = "patient_john"
+PATIENT_EMAIL: str = "patient@example.com"
 
 
 # ── Schema lifecycle (once per session, via Alembic) ─────────────────────────
@@ -77,6 +79,7 @@ async def test_user(db_session: AsyncSession) -> User:
     # A persisted caretaker user with a known password.
     user = User(
         username=CARETAKER_USERNAME,
+        email=CARETAKER_EMAIL,
         hashed_password=hash_password(TEST_PASSWORD),
         role="caretaker",
     )
@@ -91,6 +94,7 @@ async def patient_user(db_session: AsyncSession) -> User:
     # A persisted patient user with a known password.
     user = User(
         username=PATIENT_USERNAME,
+        email=PATIENT_EMAIL,
         hashed_password=hash_password(TEST_PASSWORD),
         role="patient",
     )
