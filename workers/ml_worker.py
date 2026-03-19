@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import signal
+import time
 import uuid
 
 from aiokafka import AIOKafkaConsumer
@@ -29,6 +30,22 @@ log = logging.getLogger(__name__)
 KAFKA_BROKER_URL = os.getenv("KAFKA_BROKER_URL")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC")
 KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID")
+
+
+def _get_float_env(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        log.warning("Invalid %s=%r, falling back to %s", name, raw, default)
+        return default
+    return value if value > 0 else default
+
+
+PATIENT_STATE_TTL_SECONDS = _get_float_env("PATIENT_STATE_TTL_SECONDS", 1800.0)
+PATIENT_STATE_CLEANUP_INTERVAL_SECONDS = _get_float_env("PATIENT_STATE_CLEANUP_INTERVAL_SECONDS", 60.0)
 
 system = GaitSystem()
 _shutdown_event = asyncio.Event()
@@ -134,6 +151,21 @@ def _signal_handler():
     _shutdown_event.set()
 
 
+def _cleanup_inactive_patients(active_systems, active_buffers, active_last_seen, now_ts: float) -> int:
+    stale_patient_ids = [
+        patient_id
+        for patient_id, last_seen_ts in active_last_seen.items()
+        if (now_ts - last_seen_ts) > PATIENT_STATE_TTL_SECONDS
+    ]
+
+    for patient_id in stale_patient_ids:
+        active_systems.pop(patient_id, None)
+        active_buffers.pop(patient_id, None)
+        active_last_seen.pop(patient_id, None)
+
+    return len(stale_patient_ids)
+
+
 async def run_worker():
     loop = asyncio.get_running_loop()
     # SIGINT = signal interrupt(from Ctrl + C),
@@ -155,12 +187,21 @@ async def run_worker():
 
     active_systems = {}
     active_buffers = {}
+    active_last_seen = {}
+    last_cleanup_ts = time.monotonic()
 
     try:
         while not _shutdown_event.is_set():
             try:
                 msg = await asyncio.wait_for(consumer.getone(), timeout=1.0)
                 payload = msg.value
+                now_ts = time.monotonic()
+
+                if (now_ts - last_cleanup_ts) >= PATIENT_STATE_CLEANUP_INTERVAL_SECONDS:
+                    evicted = _cleanup_inactive_patients(active_systems, active_buffers, active_last_seen, now_ts)
+                    if evicted:
+                        log.info("Evicted %s inactive patient state entries", evicted)
+                    last_cleanup_ts = now_ts
 
                 # 1. Extract patient_id first
                 patient_id = None
@@ -188,6 +229,20 @@ async def run_worker():
                     )
                     continue
 
+                if isinstance(payload, dict) and payload.get("command") == "START_SESSION":
+                    cmd_patient_id = patient_id
+                    log.info(
+                        "Received START_SESSION cmd: resetting model and buffer for Patient %s",
+                        cmd_patient_id,
+                    )
+                    profile = get_patient_profile(cmd_patient_id)
+                    active_systems[cmd_patient_id] = GaitSystem(
+                        user_weight_kg=profile["weight"], user_height_cm=profile["height"]
+                    )
+                    active_buffers[cmd_patient_id] = []
+                    active_last_seen[cmd_patient_id] = now_ts
+                    continue
+
                 # Prepare System and Buffer for the patient
                 if patient_id not in active_systems:
                     profile = get_patient_profile(patient_id)
@@ -213,6 +268,8 @@ async def run_worker():
                 else:
                     log.warning("Skipping malformed payload type=%s", type(payload).__name__)
                     continue
+
+                active_last_seen[patient_id] = now_ts
 
                 valid_count = 0
                 for v in samples:
@@ -256,6 +313,12 @@ async def run_worker():
                             log.info(f"[Patient {patient_id}] Calibrating phase... Skipping DB save")
 
             except TimeoutError:
+                now_ts = time.monotonic()
+                if (now_ts - last_cleanup_ts) >= PATIENT_STATE_CLEANUP_INTERVAL_SECONDS:
+                    evicted = _cleanup_inactive_patients(active_systems, active_buffers, active_last_seen, now_ts)
+                    if evicted:
+                        log.info("Evicted %s inactive patient state entries", evicted)
+                    last_cleanup_ts = now_ts
                 continue
 
     except Exception as e:
