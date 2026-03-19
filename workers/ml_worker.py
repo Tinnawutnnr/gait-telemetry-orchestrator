@@ -13,7 +13,7 @@ from sqlalchemy.orm import sessionmaker
 from app.models.orm import AnomalyLog, Patient, WindowReport
 from workers.realtime_processor import GaitSystem
 
-# DB conneciton
+# DB connection
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 engine = create_engine(DATABASE_URL)
@@ -79,7 +79,8 @@ def create_window_report_json(ml_result, patient_id, system, current_time: datet
 
     # case 1 : calibrate case
     if ml_result.get("type") == "status":
-        report["status"] = "CALIBRATING"
+        status = ml_result.get("status") or "CALIBRATING"
+        report["status"] = status
 
     # case2 : monitoring
     elif ml_result.get("type") == "analysis":
