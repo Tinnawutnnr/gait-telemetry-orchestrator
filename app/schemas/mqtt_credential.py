@@ -5,4 +5,4 @@ class MqttCredential(BaseModel):
     broker_url: str
     username: str
     password: str
-    token: str
+    telemetry_token: str
