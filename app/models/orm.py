@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+import uuid
 
 from sqlalchemy import (
     BigInteger,
@@ -85,6 +86,9 @@ class Patient(Base):
     age: Mapped[int | None] = mapped_column(Integer)
     height: Mapped[float] = mapped_column(Float, nullable=False)
     weight: Mapped[float] = mapped_column(Float, nullable=False)
+    telemetry_token: Mapped[str] = mapped_column(
+        String, unique=True, index=True, nullable=False, default=lambda: str(uuid.uuid4())
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
