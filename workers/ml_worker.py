@@ -231,8 +231,7 @@ async def run_worker():
 
                 if patient_id is None:
                     log.warning(
-                        "Dropping telemetry: missing/invalid patient_id "
-                        "(kafka_key_present=%s, payload_type=%s)",
+                        "Dropping telemetry: missing/invalid patient_id (kafka_key_present=%s, payload_type=%s)",
                         bool(msg.key),
                         type(payload).__name__,
                     )
