@@ -135,7 +135,7 @@ def create_anomaly_log_json(ml_result, patient_id):
     }
 
 
-def get_patient_profile(patient_id):
+def _get_patient_profile_sync(patient_id):
     with SessionLocal() as db:
         try:
             patient = db.scalar(select(Patient).where(Patient.id == patient_id))
@@ -144,6 +144,10 @@ def get_patient_profile(patient_id):
         except Exception as e:
             log.error(f"Failed to fetch patient profile for {patient_id}: {e}")
     return {"weight": 70.0, "height": 175.0}  # Fallback defaults
+
+
+async def get_patient_profile(patient_id):
+    return await asyncio.to_thread(_get_patient_profile_sync, patient_id)
 
 
 def _signal_handler():
@@ -235,7 +239,7 @@ async def run_worker():
                         "Received START_SESSION cmd: resetting model and buffer for Patient %s",
                         cmd_patient_id,
                     )
-                    profile = get_patient_profile(cmd_patient_id)
+                    profile = await get_patient_profile(cmd_patient_id)
                     active_systems[cmd_patient_id] = GaitSystem(
                         user_weight_kg=profile["weight"], user_height_cm=profile["height"]
                     )
@@ -245,7 +249,7 @@ async def run_worker():
 
                 # Prepare System and Buffer for the patient
                 if patient_id not in active_systems:
-                    profile = get_patient_profile(patient_id)
+                    profile = await get_patient_profile(patient_id)
                     active_systems[patient_id] = GaitSystem(
                         user_weight_kg=profile["weight"], user_height_cm=profile["height"]
                     )
