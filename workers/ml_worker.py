@@ -117,7 +117,8 @@ def create_window_report_json(ml_result, patient_id, system, current_time: datet
 
         report["steps"] = system.total_steps
         report["calories"] = system.total_calories
-        report["distance_m"] = system.total_steps * 0.7
+        stride_length_m = (system.user_height_cm * 0.415) / 100
+        report["distance_m"] = system.total_steps * stride_length_m
 
     return report
 
