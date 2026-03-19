@@ -13,6 +13,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      - .:/app
 
   # ── Ingestion Bridge (MQTT to Kafka) ──────────────────────────────────────
   ingestion_bridge:
