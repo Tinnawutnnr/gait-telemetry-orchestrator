@@ -270,6 +270,8 @@ async def run_worker():
                         samples = [raw]
                 elif isinstance(payload, list):
                     samples = payload
+                elif isinstance(payload, (int, float)):
+                    samples = [payload]
                 else:
                     log.warning("Skipping malformed payload type=%s", type(payload).__name__)
                     continue
