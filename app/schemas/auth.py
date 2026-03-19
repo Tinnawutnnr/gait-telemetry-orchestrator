@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr
 
 
 class Token(BaseModel):
@@ -15,5 +15,6 @@ class RegisterRequest(BaseModel):
     """Identity-only registration — profile is provisioned separately."""
 
     username: str = Field(min_length=3, max_length=50)
+    email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     role: str = Field(pattern=r"^(caretaker|patient)$")
