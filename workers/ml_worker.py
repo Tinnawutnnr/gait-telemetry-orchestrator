@@ -17,7 +17,11 @@ from workers.realtime_processor import GaitSystem
 # DB connection
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL environment variable is not set or empty; cannot initialize database engine.")
+
 engine = create_engine(DATABASE_URL)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Setup Logging for clear Docker output
