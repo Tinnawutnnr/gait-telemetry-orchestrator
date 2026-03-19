@@ -1,4 +1,5 @@
 from datetime import date, timedelta
+from functools import lru_cache
 import logging
 import os
 
@@ -8,16 +9,20 @@ from sqlalchemy.orm import sessionmaker
 
 from app.models.orm import DailyAverage, MonthlyAverage, WeeklyAverage, WindowReport, YearlyAverage
 
-# config
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] BATCH_JOB — %(message)s")
 log = logging.getLogger(__name__)
-
-DATABASE_URL = os.getenv("DATABASE_URL")
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Set to 0 to deletes yesterday's data
 RETENTION_DAYS = 0
+
+
+@lru_cache(maxsize=1)
+def _get_session_local() -> sessionmaker:
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        raise RuntimeError("DATABASE_URL is not set")
+
+    engine = create_engine(database_url)
+    return sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 def calculate_averages_for_date(target_date: date, patient_id: int | None = None):
@@ -35,7 +40,8 @@ def calculate_averages_for_date(target_date: date, patient_id: int | None = None
     start_of_week = target_date - timedelta(days=target_date.weekday())
     end_of_week = start_of_week + timedelta(days=6)
 
-    with SessionLocal() as db:
+    session_local = _get_session_local()
+    with session_local() as db:
         try:
             # dailyAverage
             daily_conditions = [cast(WindowReport.timestamp, Date) == target_date, WindowReport.status == "MONITORING"]
@@ -233,6 +239,7 @@ def run_scheduled_job():
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] BATCH_JOB — %(message)s")
     scheduler = BlockingScheduler()
 
     # Run every day at 00:01 AM
