@@ -30,9 +30,14 @@ async def get_mqtt_credential_for_patient(
             detail="Telemetry configuration not found. Please contact support or re-calibrate.",
         )
 
+    # TODO: implement access management
+    mqtt_broker_url = settings.MQTT_BROKER_WSS
+    mqtt_username = settings.MQTT_PUB_USERNAME
+    mqtt_password = settings.MQTT_PUB_PASSWORD
+
     return MqttCredential(
-        broker_url=settings.MQTT_BROKER,
-        username=settings.MQTT_PUB_USERNAME,
-        password=settings.MQTT_PUB_PASSWORD,
+        broker_url=mqtt_broker_url,
+        username=mqtt_username,
+        password=mqtt_password,
         telemetry_token=patient.telemetry_token,
     )
