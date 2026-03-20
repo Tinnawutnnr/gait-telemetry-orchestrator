@@ -21,6 +21,7 @@ from app.schemas.auth import (
     ResetPasswordRequest,
     Token,
 )
+from app.services.email import send_password_reset_email
 
 logger = logging.getLogger(__name__)
 
@@ -66,11 +67,6 @@ async def login(form: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = 
 
     token = create_access_token({"sub": str(user.id), "role": user.role})
     return Token(access_token=token)
-
-
-# mock by logging for now
-async def send_password_reset_email(email: str, otp: str) -> None:
-    logger.info(f"Mock email sent to {email}. Your OTP for password reset is: {otp}")
 
 
 @router.post("/forgot-password", status_code=status.HTTP_202_ACCEPTED, response_model=ForgotPasswordResponse)
