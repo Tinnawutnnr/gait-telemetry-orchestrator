@@ -23,6 +23,29 @@ def upgrade() -> None:
     # Enable the citext extension
     op.execute("CREATE EXTENSION IF NOT EXISTS citext")
 
+    conn = op.get_bind()
+    duplicate_rows = conn.execute(
+        sa.text(
+            """
+            SELECT LOWER(email) AS normalized_email, COUNT(*) AS count
+            FROM users
+            GROUP BY LOWER(email)
+            HAVING COUNT(*) > 1
+            """
+        )
+    ).fetchall()
+    if duplicate_rows:
+        duplicated_emails = ", ".join(
+            sorted({row.normalized_email for row in duplicate_rows if row.normalized_email is not None})
+        )
+        raise RuntimeError(
+            "Cannot migrate users.email to CITEXT because the following email "
+            "values are duplicated when compared case-insensitively: "
+            f"{duplicated_emails}. Please resolve or merge these accounts "
+            "so that no two users share the same email ignoring case, then "
+            "re-run this migration."
+        )
+
     # Normalize existing email strings
     op.execute("UPDATE users SET email = LOWER(email)")
 
@@ -39,7 +62,10 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     # Revert the email column type back to standard String/VARCHAR
-    op.alter_column("users", "email", existing_type=postgresql.CITEXT(), type_=sa.String(), existing_nullable=False)
-
-    # Optionally drop the extension
-    op.execute("DROP EXTENSION IF EXISTS citext")
+    op.alter_column(
+        "users",
+        "email",
+        existing_type=postgresql.CITEXT(),
+        type_=sa.String(),
+        existing_nullable=False,
+    )
