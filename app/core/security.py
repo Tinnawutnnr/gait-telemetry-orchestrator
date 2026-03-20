@@ -44,7 +44,7 @@ def __hash_otp(otp: str) -> str:
 # create password reset session token and otp
 def create_password_reset_session(email: str) -> tuple[str, str]:
     otp = "".join(str(secrets.randbelow(10)) for _ in range(6))
-    expire = datetime.now(UTC) + timedelta(minutes=15)
+    expire = datetime.now(UTC) + timedelta(minutes=5)
     to_encode = {"sub": email, "scope": "password_reset_otp", "otp_hash": __hash_otp(otp), "exp": expire}
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.HASH_ALGORITHM)
     return otp, encoded_jwt
