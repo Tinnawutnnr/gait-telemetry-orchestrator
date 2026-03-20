@@ -96,6 +96,8 @@ jobs:
 
       - name: Pytest
         run: pytest -v --tb=short --strict-markers -x
+        env:
+          RESEND_API_KEY: "re_dummy_key_for_ci_pipeline"
 
   # ── Continuous Delivery ─────────────────────────────────────────────
   cd:
