@@ -18,6 +18,7 @@ class Settings(BaseSettings):
 
     # mqtt credential for mobile app
     MQTT_BROKER: str
+    MQTT_BROKER_WSS: str
     MQTT_PUB_USERNAME: str
     MQTT_PUB_PASSWORD: str
 

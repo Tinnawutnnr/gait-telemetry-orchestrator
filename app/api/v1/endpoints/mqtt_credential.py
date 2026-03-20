@@ -31,7 +31,7 @@ async def get_mqtt_credential_for_patient(
         )
 
     return MqttCredential(
-        broker_url=settings.MQTT_BROKER,
+        broker_url=settings.MQTT_BROKER_WSS,
         username=settings.MQTT_PUB_USERNAME,
         password=settings.MQTT_PUB_PASSWORD,
         telemetry_token=patient.telemetry_token,
