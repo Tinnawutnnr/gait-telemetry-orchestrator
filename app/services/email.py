@@ -15,7 +15,7 @@ async def send_password_reset_email(email: str, otp: str) -> None:
         <div style="background-color: #f4f4f4; padding: 15px; text-align: center; border-radius: 5px; margin: 20px 0;">
             <strong style="font-size: 24px; letter-spacing: 4px; color: #000;">{otp}</strong>
         </div>
-        <p>This code will expire in 15 minutes.</p>
+        <p>This code will expire in 5 minutes.</p>
         <p>If you did not request a password reset, please ignore this email or contact support.</p>
     </div>
     """
