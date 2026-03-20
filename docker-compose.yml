@@ -65,6 +65,21 @@ services:
         condition: service_healthy
       db:
         condition: service_healthy
+  # ── Batch Aggregator (Cron Jobs) ──
+  batch_aggregator:        
+    build: 
+      context: .
+    container_name: gait_batch_aggregator
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    command: ["python", "-m", "workers.batch_aggregator"]
+    networks:
+      - gait_net
+    depends_on:
+      db:
+        condition: service_healthy
 
   # ── PostgreSQL ────────────────────────────────────────────────────────────
   db:
