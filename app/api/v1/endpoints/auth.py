@@ -30,7 +30,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED)
 async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)) -> Token:
-    """Identity-only provisioning. Creates a User row and returns a JWT."""
+    # Identity-only provisioning. Creates a User row and returns a JWT.
     stmt = select(User).where(or_(User.username == body.username, User.email == body.email))
     existing_user = await db.scalar(stmt)
 
