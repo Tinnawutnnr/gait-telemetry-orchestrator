@@ -92,9 +92,12 @@ jobs:
           MQTT_BROKER: "localhost"
           MQTT_PUB_USERNAME: "test_user"
           MQTT_PUB_PASSWORD: "test_password"
+          RESEND_API_KEY: "re_dummy_key_for_ci_pipeline"
 
       - name: Pytest
         run: pytest -v --tb=short --strict-markers -x
+        env:
+          RESEND_API_KEY: "re_dummy_key_for_ci_pipeline"
 
   # ── Continuous Delivery ─────────────────────────────────────────────
   cd:

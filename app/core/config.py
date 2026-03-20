@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     HASH_ALGORITHM: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int
+    RESEND_API_KEY: str
 
     # mqtt credential for mobile app
     MQTT_BROKER: str
