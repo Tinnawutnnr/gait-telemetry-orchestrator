@@ -31,19 +31,18 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 @router.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED)
 async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)) -> Token:
     """Identity-only provisioning. Creates a User row and returns a JWT."""
-    email = body.email.lower()
-    stmt = select(User).where(or_(User.username == body.username, User.email == email))
+    stmt = select(User).where(or_(User.username == body.username, User.email == body.email))
     existing_user = await db.scalar(stmt)
 
     if existing_user:
         if existing_user.username == body.username:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already taken")
-        if existing_user.email == email:
+        if existing_user.email == body.email:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already taken")
 
     user = User(
         username=body.username,
-        email=email,
+        email=body.email,
         hashed_password=hash_password(body.password),
         role=body.role,
     )
@@ -57,9 +56,8 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)) ->
 
 @router.post("/login", response_model=Token)
 async def login(form: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)) -> Token:
-    # oauth2passwordform only support username and password
-    email = form.username.lower()
-    user = await db.scalar(select(User).where(User.email == email))
+    # Allow login using either username OR email (case-insensitivity handled natively by CITEXT)
+    user = await db.scalar(select(User).where(or_(User.username == form.username, User.email == form.username)))
 
     if not user or not verify_password(form.password, user.hashed_password):
         raise HTTPException(
@@ -76,11 +74,10 @@ async def login(form: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = 
 async def forgot_password(
     request: ForgotPasswordRequest, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)
 ) -> ForgotPasswordResponse:
-    email = request.email.lower()
     # Generate OTP and session token unconditionally to prevent email enumeration
-    otp, session_token = create_password_reset_session(email=email)
+    otp, session_token = create_password_reset_session(email=request.email)
 
-    stmt = select(User).where(User.email == email)
+    stmt = select(User).where(User.email == request.email)
     user = await db.scalar(stmt)
 
     if user:
