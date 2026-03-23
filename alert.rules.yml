@@ -1,0 +1,19 @@
+groups:
+  - name: gait_telemetry_alerts
+    rules:
+      - alert: MLWorkerQueueBacklogHigh
+        expr: ml_worker_queue_backlog > 500
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ML Worker Queue Backlog is Critically High"
+          description: "The ML Worker queue backlog has been over 500 batches for more than 2 minutes (current value: {{ $value }}). The system is likely overloaded or stalled."
+
+      - alert: IngestionBridgeMQTTRateHigh
+        expr: increase(ingestion_bridge_mqtt_errors_total[5m]) > 10
+        labels:
+          severity: warning
+        annotations:
+          summary: "High MQTT Errors on Ingestion Bridge"
+          description: "There have been more than 10 MQTT connection errors in the last 5 minutes. HiveMQ connection might be unstable."
