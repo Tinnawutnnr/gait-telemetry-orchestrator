@@ -13,6 +13,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.models.orm import AnomalyLog, Patient, User, WindowReport
 from app.services.email import send_anomaly_alert_email
+from prometheus_client import Counter, Gauge, Histogram, start_http_server
 from workers.realtime_processor import GaitSystem
 
 # DB connection
@@ -51,6 +52,17 @@ def _get_float_env(name: str, default: float) -> float:
 
 PATIENT_STATE_TTL_SECONDS = _get_float_env("PATIENT_STATE_TTL_SECONDS", 1800.0)
 PATIENT_STATE_CLEANUP_INTERVAL_SECONDS = _get_float_env("PATIENT_STATE_CLEANUP_INTERVAL_SECONDS", 60.0)
+
+# Metrics
+ML_MESSAGES_PROCESSED = Counter("ml_worker_messages_total", "Total Kafka messages processed")
+ML_REPORTS_GENERATED = Counter("ml_worker_reports_total", "Total ML reports generated")
+ML_ANOMALIES_DETECTED = Counter("ml_worker_anomalies_total", "Total anomalies detected")
+ACTIVE_PATIENTS = Gauge("ml_worker_active_patients", "Current count of active patients being monitored")
+
+# Advanced / Pro Metrics
+ML_PROCESSING_QUEUE_SIZE = Gauge('ml_worker_queue_backlog', 'Number of batches waiting in queue')
+ML_INFERENCE_DURATION = Histogram('ml_inference_duration_seconds', 'Time spent processing a chunk of gait data')
+ML_LAST_PROCESSED_TIMESTAMP = Gauge('ml_worker_last_processed_timestamp', 'Unix timestamp of the last processed batch')
 
 system = GaitSystem()
 _shutdown_event = asyncio.Event()
@@ -188,6 +200,7 @@ def _cleanup_inactive_patients(active_systems, active_buffers, active_last_seen,
         active_buffers.pop(patient_id, None)
         active_last_seen.pop(patient_id, None)
 
+    ACTIVE_PATIENTS.set(len(active_systems))
     return len(stale_patient_ids)
 
 
@@ -219,6 +232,7 @@ async def run_worker():
         while not _shutdown_event.is_set():
             try:
                 msg = await asyncio.wait_for(consumer.getone(), timeout=1.0)
+                ML_MESSAGES_PROCESSED.inc()
                 payload = msg.value
                 now_ts = time.monotonic()
 
@@ -265,6 +279,7 @@ async def run_worker():
                     )
                     active_buffers[cmd_patient_id] = []
                     active_last_seen[cmd_patient_id] = now_ts
+                    ACTIVE_PATIENTS.set(len(active_systems))
                     continue
 
                 # Prepare System and Buffer for the patient
@@ -274,6 +289,7 @@ async def run_worker():
                         user_weight_kg=profile["weight"], user_height_cm=profile["height"]
                     )
                     active_buffers[patient_id] = []
+                    ACTIVE_PATIENTS.set(len(active_systems))
 
                 # Retrieve the instance for this patient to work on
                 system = active_systems[patient_id]
@@ -305,8 +321,9 @@ async def run_worker():
                     except (TypeError, ValueError):
                         continue
 
-                if valid_count == 0:
-                    continue
+                if valid_count > 0:
+                    total_backlog = sum(len(buf) // 100 for buf in active_buffers.values())
+                    ML_PROCESSING_QUEUE_SIZE.set(total_backlog)
 
                 # Process in chunks of 100
                 while len(buffer) >= 100:
@@ -314,10 +331,15 @@ async def run_worker():
                     # Remove old chunk
                     active_buffers[patient_id] = buffer[100:]
                     buffer = active_buffers[patient_id]
+                    
+                    ML_PROCESSING_QUEUE_SIZE.set(sum(len(buf) // 100 for buf in active_buffers.values()))
 
-                    result = await asyncio.to_thread(system.process_stream_chunk, chunk)
+                    with ML_INFERENCE_DURATION.time():
+                        result = await asyncio.to_thread(system.process_stream_chunk, chunk)
 
                     if result:
+                        ML_LAST_PROCESSED_TIMESTAMP.set_to_current_time()
+                        ML_REPORTS_GENERATED.inc()
                         log.info(f"[Patient {patient_id}] ML Report: {result.get('type')}")
 
                         current_timestamp = datetime.now(UTC)
@@ -329,6 +351,7 @@ async def run_worker():
                             anomaly_log_data = None
 
                             if window_report_data.get("gait_health") == "ANOMALY_DETECTED":
+                                ML_ANOMALIES_DETECTED.inc()
                                 anomaly_log_data = create_anomaly_log_json(result, patient_id)  # create log
                                 patient_email = await get_patient_email(patient_id)
                                 # send email
@@ -380,4 +403,7 @@ async def run_worker():
 
 
 if __name__ == "__main__":
+    # Start Prometheus metrics server on port 8000
+    start_http_server(8000)
+    log.info("Prometheus metrics server started on port 8000")
     asyncio.run(run_worker())

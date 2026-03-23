@@ -138,6 +138,50 @@ services:
       timeout: 5s
       retries: 5
 
+  # ── Prometheus ────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: gait_prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - "9090:9090"
+    networks:
+      - gait_net
+
+  # ── Grafana ───────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    container_name: gait_grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - gait_net
+    depends_on:
+      - prometheus
+
+  # ── Node Exporter ─────────────────────────────────────────────────────────
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: gait_node_exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    networks:
+      - gait_net
+
 networks:
   gait_net:
     driver: bridge
@@ -145,3 +189,5 @@ networks:
 volumes:
   pgdata:
   kafka_data:
+  prometheus_data:
+  grafana_data:

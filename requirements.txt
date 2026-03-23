@@ -24,3 +24,6 @@ aiomqtt>=2.3,<3
 
 #Scheduler
 apscheduler==3.10.4
+
+#Monitoring
+prometheus-fastapi-instrumentator
