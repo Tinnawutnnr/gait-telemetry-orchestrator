@@ -11,8 +11,9 @@ from aiokafka import AIOKafkaConsumer
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
-from app.models.orm import AnomalyLog, Patient, WindowReport
+from app.models.orm import AnomalyLog, Patient, User, WindowReport
 from workers.realtime_processor import GaitSystem
+from app.services.email import send_anomaly_alert_email
 
 # DB connection
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -153,6 +154,17 @@ def _get_patient_profile_sync(patient_id):
 
 async def get_patient_profile(patient_id):
     return await asyncio.to_thread(_get_patient_profile_sync, patient_id)
+
+def _get_patient_email_sync(patient_id):
+    with SessionLocal() as db:
+        return db.scalar(
+            select(User.email)
+            .join(Patient, Patient.user_id == User.id)
+            .where(Patient.id == patient_id)
+        )
+
+async def get_patient_email(patient_id):
+    return await asyncio.to_thread(_get_patient_email_sync, patient_id)
 
 
 def _signal_handler():
@@ -313,7 +325,22 @@ async def run_worker():
                             anomaly_log_data = None
 
                             if window_report_data.get("gait_health") == "ANOMALY_DETECTED":
-                                anomaly_log_data = create_anomaly_log_json(result, patient_id)
+                                anomaly_log_data = create_anomaly_log_json(result, patient_id) # create log
+                                patient_email = await get_patient_email(patient_id) 
+                                # send email
+                                try:
+                                    send_anomaly_alert_email(
+                                        email=patient_email,
+                                        patient_id=str(patient_id),
+                                        anomaly_score=anomaly_log_data["anomaly_score"],
+                                        root_cause_feature=anomaly_log_data["root_cause_feature"],
+                                        z_score=anomaly_log_data["z_score"],
+                                        current_val=anomaly_log_data["current_val"],
+                                        normal_ref=anomaly_log_data["normal_ref"],
+                                        timestamp=current_timestamp,
+                                        )
+                                except Exception as e:
+                                    log.error(f"[Patient {patient_id}] Failed to send anomaly alert email: {e}")
                                 log.warning(f"[Patient {patient_id}] Anomaly Detected!")
 
                             await asyncio.to_thread(save_to_database, window_report_data, anomaly_log_data)
