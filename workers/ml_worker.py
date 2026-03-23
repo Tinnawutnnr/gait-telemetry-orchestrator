@@ -8,12 +8,12 @@ import time
 import uuid
 
 from aiokafka import AIOKafkaConsumer
+from prometheus_client import Counter, Gauge, Histogram, start_http_server
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 from app.models.orm import AnomalyLog, Patient, User, WindowReport
 from app.services.email import send_anomaly_alert_email
-from prometheus_client import Counter, Gauge, Histogram, start_http_server
 from workers.realtime_processor import GaitSystem
 
 # DB connection
@@ -60,9 +60,9 @@ ML_ANOMALIES_DETECTED = Counter("ml_worker_anomalies_total", "Total anomalies de
 ACTIVE_PATIENTS = Gauge("ml_worker_active_patients", "Current count of active patients being monitored")
 
 # Advanced / Pro Metrics
-ML_PROCESSING_QUEUE_SIZE = Gauge('ml_worker_queue_backlog', 'Number of batches waiting in queue')
-ML_INFERENCE_DURATION = Histogram('ml_inference_duration_seconds', 'Time spent processing a chunk of gait data')
-ML_LAST_PROCESSED_TIMESTAMP = Gauge('ml_worker_last_processed_timestamp', 'Unix timestamp of the last processed batch')
+ML_PROCESSING_QUEUE_SIZE = Gauge("ml_worker_queue_backlog", "Number of batches waiting in queue")
+ML_INFERENCE_DURATION = Histogram("ml_inference_duration_seconds", "Time spent processing a chunk of gait data")
+ML_LAST_PROCESSED_TIMESTAMP = Gauge("ml_worker_last_processed_timestamp", "Unix timestamp of the last processed batch")
 
 system = GaitSystem()
 _shutdown_event = asyncio.Event()
@@ -331,7 +331,7 @@ async def run_worker():
                     # Remove old chunk
                     active_buffers[patient_id] = buffer[100:]
                     buffer = active_buffers[patient_id]
-                    
+
                     ML_PROCESSING_QUEUE_SIZE.set(sum(len(buf) // 100 for buf in active_buffers.values()))
 
                     with ML_INFERENCE_DURATION.time():
