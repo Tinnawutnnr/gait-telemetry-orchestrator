@@ -1,5 +1,6 @@
-from datetime import datetime
+import html
 import logging
+from datetime import datetime
 
 import httpx
 
@@ -14,7 +15,7 @@ async def send_password_reset_email(email: str, otp: str) -> None:
         <h2>Password Reset Request</h2>
         <p>You recently requested to reset your password. Here is your One-Time Password (OTP):</p>
         <div style="background-color: #f4f4f4; padding: 15px; text-align: center; border-radius: 5px; margin: 20px 0;">
-            <strong style="font-size: 24px; letter-spacing: 4px; color: #000;">{otp}</strong>
+            <strong style="font-size: 24px; letter-spacing: 4px; color: #000;">{html.escape(str(otp))}</strong>
         </div>
         <p>This code will expire in 5 minutes.</p>
         <p>If you did not request a password reset, please ignore this email or contact support.</p>
@@ -57,9 +58,9 @@ async def send_anomaly_alert_email(
     html_content = f"""
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
         <h2>Anomaly Detected</h2>
-        <p>An anomaly has been detected in the gait of patient {patient_id}.</p>
+        <p>An anomaly has been detected in the gait of patient {html.escape(str(patient_id))}.</p>
         <p>Anomaly Score: {anomaly_score}</p>
-        <p>Root Cause feature: {root_cause_feature}</p>
+        <p>Root Cause feature: {html.escape(str(root_cause_feature))}</p>
         <p>Z-score deviation: {z_score}</p>
         <p>Current value: {current_val}</p>
         <p>Normal reference value: {normal_ref}</p>
