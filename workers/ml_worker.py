@@ -339,13 +339,13 @@ async def run_worker():
                                             timestamp=current_timestamp,
                                         )
                                     )
-                                    def _log_email_task_result(task: asyncio.Task) -> None:
+
+                                    def _log_email_task_result(task: asyncio.Task, pid=patient_id) -> None:
                                         try:
                                             task.result()
                                         except Exception as e:
-                                            log.error(
-                                                f"[Patient {patient_id}] Failed to send anomaly alert email: {e}"
-                                            )
+                                            log.error(f"[Patient {pid}] Failed to send anomaly alert email: {e}")
+
                                     email_task.add_done_callback(_log_email_task_result)
                                 except Exception as e:
                                     log.error(f"[Patient {patient_id}] Failed to schedule anomaly alert email: {e}")

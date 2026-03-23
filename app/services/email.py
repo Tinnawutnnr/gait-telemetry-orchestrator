@@ -1,6 +1,6 @@
+from datetime import datetime
 import html
 import logging
-from datetime import datetime
 
 import httpx
 
