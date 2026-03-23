@@ -327,19 +327,28 @@ async def run_worker():
                                 patient_email = await get_patient_email(patient_id)
                                 # send email
                                 try:
-                                    send_anomaly_alert_email(
-                                        email=patient_email,
-                                        patient_id=str(patient_id),
-                                        anomaly_score=anomaly_log_data["anomaly_score"],
-                                        root_cause_feature=anomaly_log_data["root_cause_feature"],
-                                        z_score=anomaly_log_data["z_score"],
-                                        current_val=anomaly_log_data["current_val"],
-                                        normal_ref=anomaly_log_data["normal_ref"],
-                                        timestamp=current_timestamp,
+                                    email_task = asyncio.create_task(
+                                        send_anomaly_alert_email(
+                                            email=patient_email,
+                                            patient_id=str(patient_id),
+                                            anomaly_score=anomaly_log_data["anomaly_score"],
+                                            root_cause_feature=anomaly_log_data["root_cause_feature"],
+                                            z_score=anomaly_log_data["z_score"],
+                                            current_val=anomaly_log_data["current_val"],
+                                            normal_ref=anomaly_log_data["normal_ref"],
+                                            timestamp=current_timestamp,
+                                        )
                                     )
+                                    def _log_email_task_result(task: asyncio.Task) -> None:
+                                        try:
+                                            task.result()
+                                        except Exception as e:
+                                            log.error(
+                                                f"[Patient {patient_id}] Failed to send anomaly alert email: {e}"
+                                            )
+                                    email_task.add_done_callback(_log_email_task_result)
                                 except Exception as e:
-                                    log.error(f"[Patient {patient_id}] Failed to send anomaly alert email: {e}")
-                                log.warning(f"[Patient {patient_id}] Anomaly Detected!")
+                                    log.error(f"[Patient {patient_id}] Failed to schedule anomaly alert email: {e}")
 
                             await asyncio.to_thread(save_to_database, window_report_data, anomaly_log_data)
 
