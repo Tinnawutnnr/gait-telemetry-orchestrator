@@ -40,15 +40,16 @@ async def send_password_reset_email(email: str, otp: str) -> None:
     except Exception as e:
         logger.error(f"Unexpected error occurred while sending email to {email}: {str(e)}")
 
+
 async def send_anomaly_alert_email(
-    email: str, 
-    patient_id: str, 
-    anomaly_score: float, 
-    root_cause_feature: str, 
-    z_score: float, 
-    current_val: float, 
-    normal_ref: float, 
-    timestamp: datetime
+    email: str,
+    patient_id: str,
+    anomaly_score: float,
+    root_cause_feature: str,
+    z_score: float,
+    current_val: float,
+    normal_ref: float,
+    timestamp: datetime,
 ) -> None:
     # Send an anomaly alert email to the caretaker.
 
@@ -64,7 +65,7 @@ async def send_anomaly_alert_email(
         <p>Timestamp: {timestamp}</p>
     </div>
     """
-    
+
     payload = {
         "from": "Perga <noreply@contact.tinnawut.codes>",
         "to": [email],
