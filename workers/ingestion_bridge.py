@@ -11,6 +11,7 @@ from typing import NoReturn
 
 from aiokafka import AIOKafkaProducer
 import aiomqtt
+from prometheus_client import Counter, start_http_server
 
 # Structured logging
 logging.basicConfig(
@@ -53,6 +54,11 @@ MQTT_USE_TLS: bool = os.environ.get("MQTT_USE_TLS", "true").lower() in {"1", "tr
 MQTT_TOPIC: str = "gait/telemetry/+"
 MQTT_QOS: int = _get_int_env("MQTT_QOS", 1)
 
+
+# Metrics
+MESSAGES_PROCESSED = Counter("ingestion_bridge_messages_total", "Total messages processed by the bridge")
+KAFKA_SEND_ERRORS = Counter("ingestion_bridge_kafka_errors_total", "Total Kafka send errors")
+MQTT_CONNECTION_ERRORS = Counter("ingestion_bridge_mqtt_errors_total", "Total MQTT connection errors")
 
 # Backoff parameters (seconds)
 _BACKOFF_BASE: float = 1.0
@@ -193,15 +199,18 @@ async def _run_bridge() -> None:
                             user_id,
                             len(raw_payload),
                         )
+                        MESSAGES_PROCESSED.inc()
                         # Touch the health file on successful processing of each message to indicate liveness.
                         health_file.touch(exist_ok=True)
                     except Exception as exc:
+                        KAFKA_SEND_ERRORS.inc()
                         log.error("Kafka send failed for user_id=%s: %s", user_id, exc)
 
         except asyncio.CancelledError:
             log.info("Bridge cancelled — shutting down")
             break
         except aiomqtt.MqttError as exc:
+            MQTT_CONNECTION_ERRORS.inc()
             if _shutdown_event.is_set():
                 break
             log.error(
@@ -230,6 +239,9 @@ def main() -> NoReturn:
     asyncio.set_event_loop(loop)
     _install_signal_handlers(loop)
     try:
+        # Start Prometheus metrics server on port 8000
+        start_http_server(8000)
+        log.info("Prometheus metrics server started on port 8000")
         loop.run_until_complete(_run_bridge())
     finally:
         loop.run_until_complete(loop.shutdown_asyncgens())

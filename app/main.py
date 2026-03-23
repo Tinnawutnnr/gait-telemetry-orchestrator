@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.api.v1.endpoints.auth import router as auth_router
 from app.api.v1.endpoints.caretaker_patients import router as caretaker_patients_router
@@ -10,6 +11,8 @@ app = FastAPI(
     title="Gait Telemetry Orchestrator",
     version="0.1.0",
 )
+
+Instrumentator().instrument(app).expose(app)
 
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(profiles_router, prefix="/api/v1")
