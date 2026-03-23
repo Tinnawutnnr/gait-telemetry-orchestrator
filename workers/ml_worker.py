@@ -158,7 +158,13 @@ async def get_patient_profile(patient_id):
 
 def _get_patient_email_sync(patient_id):
     with SessionLocal() as db:
-        return db.scalar(select(User.email).join(Patient, Patient.user_id == User.id).where(Patient.id == patient_id))
+        try:
+            return db.scalar(
+                select(User.email).join(Patient, Patient.user_id == User.id).where(Patient.id == patient_id)
+            )
+        except Exception as e:
+            log.error(f"Failed to fetch patient email for {patient_id}: {e}")
+            return None
 
 
 async def get_patient_email(patient_id):
