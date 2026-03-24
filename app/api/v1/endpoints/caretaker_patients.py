@@ -142,7 +142,7 @@ async def get_patient_anomaly_log(
     return result.scalars().all()
 
 
-@router.get("/dailyAverage/by-date/{username}", response_model=DailyAverageSchema | None)
+@router.get("/dailyAverage/byDate/{username}", response_model=DailyAverageSchema | None)
 async def get_patient_daily_average_by_date(
     date_str: str = Query(..., description="Date in YYYY-MM-DD format"),
     patient: Patient = Depends(get_authorized_patient_for_caretaker),
