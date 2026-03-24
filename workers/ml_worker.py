@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import json
 import logging
 import os
@@ -319,8 +319,7 @@ async def run_worker():
 
                     if result:
                         log.info(f"[Patient {patient_id}] ML Report: {result.get('type')}")
-                        gmt7 = timezone(timedelta(hours=7))
-                        current_timestamp = datetime.now(gmt7)
+                        current_timestamp = datetime.now(timezone.utc)
 
                         window_report_data = create_window_report_json(result, patient_id, system, current_timestamp)
 
