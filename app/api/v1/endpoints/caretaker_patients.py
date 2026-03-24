@@ -6,10 +6,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import require_role
+from app.core.dependencies import (
+    _get_caretaker_profile,
+    _get_patient_profile,
+    get_authorized_patient_for_caretaker,
+    require_role,
+)
 from app.models.orm import (
     AnomalyLog,
-    Caretaker,
     DailyAverage,
     MonthlyAverage,
     Patient,
@@ -20,45 +24,6 @@ from app.models.orm import (
 from app.schemas.caretaker_patients import LinkPatientRequest, PatientListItem, PatientProfileResponse
 
 router = APIRouter(prefix="/caretakers/patients", tags=["caretaker-patients"])
-
-
-async def _get_caretaker_profile(user: User, db: AsyncSession) -> Caretaker:
-    caretaker = await db.scalar(select(Caretaker).where(Caretaker.user_id == user.id))
-    if not caretaker:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caretaker profile not found")
-    return caretaker
-
-
-async def _get_patient_profile(username: str, db: AsyncSession) -> Patient:
-    patient_user = await db.scalar(select(User).where(User.username == username, User.role == "patient"))
-    if not patient_user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient username not found")
-
-    patient = await db.scalar(select(Patient).where(Patient.user_id == patient_user.id))
-    if not patient:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient profile not found")
-    return patient
-
-
-async def get_authorized_patient_for_caretaker(
-    username: str,
-    current_user: User = Depends(require_role("caretaker")),
-    db: AsyncSession = Depends(get_db),
-) -> Patient:
-    # 1. Get Caretaker
-    caretaker = await _get_caretaker_profile(current_user, db)
-
-    # 2. Get Patient Profile
-    patient = await _get_patient_profile(username, db)
-
-    if not patient.caretaker_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Patient is not linked to any caretaker")
-
-    # 3. Check Ownership (Authorization)
-    if patient.caretaker_id != caretaker.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Patient is not linked to you")
-
-    return patient
 
 
 @router.post("", status_code=status.HTTP_204_NO_CONTENT)

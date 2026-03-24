@@ -6,13 +6,12 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import require_role
+from app.core.dependencies import get_current_patient_profile
 from app.models.orm import (
     AnomalyLog,
     DailyAverage,
     MonthlyAverage,
     Patient,
-    User,
     WeeklyAverage,
     WindowReport,
     YearlyAverage,
@@ -21,16 +20,6 @@ from app.schemas.patients import PatientCaretakerStatus
 from workers.batch_aggregator import calculate_averages_for_date
 
 router = APIRouter(prefix="/patients", tags=["patients"])
-
-
-async def get_current_patient_profile(
-    current_user: User = Depends(require_role("patient")),
-    db: AsyncSession = Depends(get_db),
-) -> Patient:
-    patient = await db.scalar(select(Patient).where(Patient.user_id == current_user.id))
-    if not patient:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient profile not found")
-    return patient
 
 
 # for checking is patient already has caretaker or not
