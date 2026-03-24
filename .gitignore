@@ -34,3 +34,4 @@ Thumbs.db
 #model testing
 data/
 tests/simulate_mobile_app.py
+tests/insert_test_averages.py

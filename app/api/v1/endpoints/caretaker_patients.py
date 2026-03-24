@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from datetime import datetime, timedelta, date
+from fastapi import APIRouter, Depends, HTTPException, status, Query
+from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -253,3 +254,107 @@ async def get_patient_anomaly_log(
     if not anomaly_log:
         raise HTTPException(status_code=404, detail="Report not found")
     return anomaly_log
+
+
+@router.get("/dailyAverage/byDate/{username}")
+async def get_patient_daily_average_by_date(
+    username: str,
+    date_str: str,
+    current_user: User = Depends(require_role("caretaker")),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        day = date.fromisoformat(date_str)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
+
+    caretaker = await db.scalar(select(Caretaker).where(Caretaker.user_id == current_user.id))
+    if not caretaker:
+        raise HTTPException(status_code=404, detail="Caretaker profile not found.")
+
+    patient_user = await db.scalar(select(User).where((User.username == username) & (User.role == "patient")))
+    if not patient_user:
+        raise HTTPException(status_code=404, detail="Patient username not found.")
+
+    patient = await db.scalar(select(Patient).where(Patient.user_id == patient_user.id))
+    if not patient or patient.caretaker_id != caretaker.id:
+        raise HTTPException(status_code=403, detail="Unauthorized caretaker or patient not found.")
+
+    result = await db.execute(
+        select(DailyAverage).where(
+            (DailyAverage.patient_id == patient.id) &
+            (DailyAverage.report_date == day)
+        )
+    )
+    daily_avg = result.scalars().first()
+    if not daily_avg:
+        raise HTTPException(status_code=404, detail="Requested report not found.")
+    return daily_avg
+
+
+@router.get("/fallAnalysis/{username}")
+async def get_patient_fall_analysis(
+    username: str,
+    date_str: str = Query(..., description="Date in YYYY-MM-DD format"),
+    current_user: User = Depends(require_role("caretaker")),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        ref_date = date.fromisoformat(date_str)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
+
+    caretaker = await db.scalar(select(Caretaker).where(Caretaker.user_id == current_user.id))
+    if not caretaker:
+        raise HTTPException(status_code=404, detail="Caretaker profile not found.")
+
+    patient_user = await db.scalar(select(User).where((User.username == username) & (User.role == "patient")))
+    if not patient_user:
+        raise HTTPException(status_code=404, detail="Patient username not found.")
+
+    patient = await db.scalar(select(Patient).where(Patient.user_id == patient_user.id))
+    if not patient or patient.caretaker_id != caretaker.id:
+        raise HTTPException(status_code=403, detail="Unauthorized caretaker or patient not found.")
+
+    def week_key(dt):
+        return f"{dt.isocalendar()[0]}-W{dt.isocalendar()[1]:02d}"
+
+    def month_key(dt):
+        return dt.strftime("%Y-%m")
+
+    def year_key(dt):
+        return dt.year
+
+    latest_week = week_key(ref_date)
+    prev_week = week_key(ref_date - timedelta(weeks=1))
+    latest_month = month_key(ref_date)
+    prev_month = month_key((ref_date.replace(day=1) - timedelta(days=1)))
+    latest_year = year_key(ref_date)
+    prev_year = latest_year - 1
+
+    async def get_pair(model, field, prev_val, latest_val):
+        latest = await db.scalar(
+            select(model).where(
+                (getattr(model, "patient_id") == patient.id) &
+                (getattr(model, field) == latest_val)
+            )
+        )
+        prev = await db.scalar(
+            select(model).where(
+                (getattr(model, "patient_id") == patient.id) &
+                (getattr(model, field) == prev_val)
+            )
+        )
+        if not latest or not prev:
+            raise HTTPException(status_code=404, detail=f"Not enough data for {model.__tablename__}")
+        return {"previous": prev, "latest": latest}
+
+    week_pair = await get_pair(WeeklyAverage, "report_week", prev_week, latest_week)
+    month_pair = await get_pair(MonthlyAverage, "report_month", prev_month, latest_month)
+    year_pair = await get_pair(YearlyAverage, "report_year", prev_year, latest_year)
+
+    return {
+        "week": week_pair,
+        "month": month_pair,
+        "year": year_pair,
+    }

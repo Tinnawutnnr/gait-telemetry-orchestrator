@@ -1,5 +1,5 @@
 import asyncio
-from datetime import UTC, datetime
+from datetime import datetime, timezone, timedelta
 import json
 import logging
 import os
@@ -319,8 +319,8 @@ async def run_worker():
 
                     if result:
                         log.info(f"[Patient {patient_id}] ML Report: {result.get('type')}")
-
-                        current_timestamp = datetime.now(UTC)
+                        gmt7 = timezone(timedelta(hours=7))
+                        current_timestamp = datetime.now(gmt7)
 
                         window_report_data = create_window_report_json(result, patient_id, system, current_timestamp)
 
@@ -330,8 +330,9 @@ async def run_worker():
 
                             if window_report_data.get("gait_health") == "ANOMALY_DETECTED":
                                 anomaly_log_data = create_anomaly_log_json(result, patient_id)  # create log
+                                log.info("Anomaly detected saving to anomaly log")
                                 patient_email = await get_patient_email(patient_id)
-                                # send email
+                                #send email
                                 try:
                                     email_task = asyncio.create_task(
                                         send_anomaly_alert_email(
@@ -370,6 +371,10 @@ async def run_worker():
                         log.info("Evicted %s inactive patient state entries", evicted)
                     last_cleanup_ts = now_ts
                 continue
+
+            except Exception as e:
+                log.error(f"Error processing chunk for patient {patient_id}: {e}", exc_info=True)
+                continue # Skip bad chunk and keep listening
 
     except Exception as e:
         log.error(f"Worker crashed: {e}")
