@@ -1,9 +1,12 @@
+from typing import TypeVar
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 import jwt
 from jwt.exceptions import PyJWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+import asyncio
 
 from app.core.config import settings
 from app.core.database import get_db
@@ -72,16 +75,14 @@ async def get_authorized_patient_for_caretaker(
     current_user: User = Depends(require_role("caretaker")),
     db: AsyncSession = Depends(get_db),
 ) -> Patient:
-    # 1. Get Caretaker
-    caretaker = await _get_caretaker_profile(current_user, db)
-
-    # 2. Get Patient Profile
-    patient = await _get_patient_profile(username, db)
+    caretaker, patient = await asyncio.gather(
+        _get_caretaker_profile(current_user, db),
+        _get_patient_profile(username, db)
+    )
 
     if not patient.caretaker_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Patient is not linked to any caretaker")
 
-    # 3. Check Ownership (Authorization)
     if patient.caretaker_id != caretaker.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Patient is not linked to you")
 
@@ -96,3 +97,22 @@ async def get_current_patient_profile(
     if not patient:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient profile not found")
     return patient
+
+
+T = TypeVar("T")
+
+async def get_report_pair(
+    db: AsyncSession,
+    patient_id: int,
+    model: type[T],
+    field: str,
+    prev_val: str | int,
+    latest_val: str | int
+) -> dict[str, T | None]:
+    async def fetch(val: str | int) -> T | None:
+        return await db.scalar(
+            select(model).where((model.patient_id == patient_id) & (getattr(model, field) == val))
+        )
+
+    prev, latest = await asyncio.gather(fetch(prev_val), fetch(latest_val))
+    return {"previous": prev, "latest": latest}

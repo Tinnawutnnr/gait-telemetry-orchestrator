@@ -1,5 +1,6 @@
 import asyncio
 from datetime import date, timedelta
+from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
@@ -11,6 +12,7 @@ from app.core.dependencies import (
     _get_patient_profile,
     get_authorized_patient_for_caretaker,
     require_role,
+    get_report_pair,
 )
 from app.models.orm import (
     AnomalyLog,
@@ -22,6 +24,14 @@ from app.models.orm import (
     YearlyAverage,
 )
 from app.schemas.caretaker_patients import LinkPatientRequest, PatientListItem, PatientProfileResponse
+from app.schemas.reports import (
+    AnomalyLogSchema,
+    DailyAverageSchema,
+    FallAnalysisResponseSchema,
+    MonthlyAverageSchema,
+    WeeklyAverageSchema,
+    YearlyAverageSchema,
+)
 
 router = APIRouter(prefix="/caretakers/patients", tags=["caretaker-patients"])
 
@@ -93,7 +103,7 @@ async def get_patient_profile(
     )
 
 
-@router.get("/dailyAverage/{username}")
+@router.get("/dailyAverage/{username}", response_model=List[DailyAverageSchema])
 async def get_patient_daily_average(
     patient: Patient = Depends(get_authorized_patient_for_caretaker), db: AsyncSession = Depends(get_db)
 ):
@@ -101,7 +111,7 @@ async def get_patient_daily_average(
     return result.scalars().all()
 
 
-@router.get("/weeklyAverage/{username}")
+@router.get("/weeklyAverage/{username}", response_model=List[WeeklyAverageSchema])
 async def get_patient_weekly_average(
     patient: Patient = Depends(get_authorized_patient_for_caretaker), db: AsyncSession = Depends(get_db)
 ):
@@ -109,7 +119,7 @@ async def get_patient_weekly_average(
     return result.scalars().all()
 
 
-@router.get("/monthlyAverage/{username}")
+@router.get("/monthlyAverage/{username}", response_model=List[MonthlyAverageSchema])
 async def get_patient_monthly_average(
     patient: Patient = Depends(get_authorized_patient_for_caretaker), db: AsyncSession = Depends(get_db)
 ):
@@ -117,7 +127,7 @@ async def get_patient_monthly_average(
     return result.scalars().all()
 
 
-@router.get("/yearlyAverage/{username}")
+@router.get("/yearlyAverage/{username}", response_model=List[YearlyAverageSchema])
 async def get_patient_yearly_average(
     patient: Patient = Depends(get_authorized_patient_for_caretaker), db: AsyncSession = Depends(get_db)
 ):
@@ -125,7 +135,7 @@ async def get_patient_yearly_average(
     return result.scalars().all()
 
 
-@router.get("/anomalyLog/{username}")
+@router.get("/anomalyLog/{username}", response_model=List[AnomalyLogSchema])
 async def get_patient_anomaly_log(
     patient: Patient = Depends(get_authorized_patient_for_caretaker), db: AsyncSession = Depends(get_db)
 ):
@@ -133,7 +143,7 @@ async def get_patient_anomaly_log(
     return result.scalars().all()
 
 
-@router.get("/dailyAverage/by-date/{username}")
+@router.get("/dailyAverage/by-date/{username}", response_model=Optional[DailyAverageSchema])
 async def get_patient_daily_average_by_date(
     date_str: str = Query(..., description="Date in YYYY-MM-DD format"),
     patient: Patient = Depends(get_authorized_patient_for_caretaker),
@@ -150,7 +160,7 @@ async def get_patient_daily_average_by_date(
     return result.scalars().first()
 
 
-@router.get("/fallAnalysis/{username}")
+@router.get("/fallAnalysis/{username}", response_model=FallAnalysisResponseSchema)
 async def get_patient_fall_analysis(
     date_str: str = Query(..., description="Date in YYYY-MM-DD format"),
     patient: Patient = Depends(get_authorized_patient_for_caretaker),
@@ -177,20 +187,10 @@ async def get_patient_fall_analysis(
     latest_year = year_key(ref_date)
     prev_year = latest_year - 1
 
-    async def get_pair(model, field, prev_val, latest_val):
-        latest = await db.scalar(
-            select(model).where((model.patient_id == patient.id) & (getattr(model, field) == latest_val))
-        )
-        prev = await db.scalar(
-            select(model).where((model.patient_id == patient.id) & (getattr(model, field) == prev_val))
-        )
-        return {"previous": prev, "latest": latest}
-
-    # get all in 1 time
     week_pair, month_pair, year_pair = await asyncio.gather(
-        get_pair(WeeklyAverage, "report_week", prev_week, latest_week),
-        get_pair(MonthlyAverage, "report_month", prev_month, latest_month),
-        get_pair(YearlyAverage, "report_year", prev_year, latest_year),
+        get_report_pair(db, patient.id, WeeklyAverage, "report_week", prev_week, latest_week),
+        get_report_pair(db, patient.id, MonthlyAverage, "report_month", prev_month, latest_month),
+        get_report_pair(db, patient.id, YearlyAverage, "report_year", prev_year, latest_year),
     )
 
     return {

@@ -1,12 +1,13 @@
 import asyncio
 from datetime import date, timedelta
+from typing import Any, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_patient_profile
+from app.core.dependencies import get_current_patient_profile, get_report_pair
 from app.models.orm import (
     AnomalyLog,
     DailyAverage,
@@ -17,6 +18,14 @@ from app.models.orm import (
     YearlyAverage,
 )
 from app.schemas.patients import PatientCaretakerStatus
+from app.schemas.reports import (
+    AnomalyLogSchema,
+    DailyAverageSchema,
+    FallAnalysisResponseSchema,
+    MonthlyAverageSchema,
+    WeeklyAverageSchema,
+    YearlyAverageSchema,
+)
 from workers.batch_aggregator import calculate_averages_for_date
 
 router = APIRouter(prefix="/patients", tags=["patients"])
@@ -65,7 +74,7 @@ async def get_window_reports(
     return latest_report
 
 
-@router.get("/me/dailyAverage")
+@router.get("/me/dailyAverage", response_model=List[DailyAverageSchema])
 async def get_daily_average(
     patient: Patient = Depends(get_current_patient_profile),
     db: AsyncSession = Depends(get_db),
@@ -75,7 +84,7 @@ async def get_daily_average(
     return daily_avg
 
 
-@router.get("/me/weeklyAverage")
+@router.get("/me/weeklyAverage", response_model=List[WeeklyAverageSchema])
 async def get_weekly_average(
     patient: Patient = Depends(get_current_patient_profile),
     db: AsyncSession = Depends(get_db),
@@ -85,7 +94,7 @@ async def get_weekly_average(
     return weekly_avg
 
 
-@router.get("/me/monthlyAverage")
+@router.get("/me/monthlyAverage", response_model=List[MonthlyAverageSchema])
 async def get_monthly_average(
     patient: Patient = Depends(get_current_patient_profile),
     db: AsyncSession = Depends(get_db),
@@ -95,7 +104,7 @@ async def get_monthly_average(
     return monthly_avg
 
 
-@router.get("/me/yearlyAverage")
+@router.get("/me/yearlyAverage", response_model=List[YearlyAverageSchema])
 async def get_yearly_average(
     patient: Patient = Depends(get_current_patient_profile),
     db: AsyncSession = Depends(get_db),
@@ -105,7 +114,7 @@ async def get_yearly_average(
     return yearly_avg
 
 
-@router.get("/me/anomalyLog")
+@router.get("/me/anomalyLog", response_model=List[AnomalyLogSchema])
 async def get_anomaly_log(
     patient: Patient = Depends(get_current_patient_profile),
     db: AsyncSession = Depends(get_db),
@@ -126,7 +135,7 @@ async def get_patient_id_by_telemetry_token(
     return patient.id
 
 
-@router.get("/me/dailyAverage/byDate")
+@router.get("/me/dailyAverage/byDate", response_model=Optional[DailyAverageSchema])
 async def get_daily_average_by_date(
     date_str: str = Query(..., description="Date in YYYY-MM-DD format"),
     patient: Patient = Depends(get_current_patient_profile),
@@ -145,7 +154,7 @@ async def get_daily_average_by_date(
     return result.scalars().first()
 
 
-@router.get("/me/fallAnalysis")
+@router.get("/me/fallAnalysis", response_model=FallAnalysisResponseSchema)
 async def fall_analysis(
     date_str: str = Query(..., description="Date in YYYY-MM-DD format"),
     patient: Patient = Depends(get_current_patient_profile),
@@ -177,19 +186,10 @@ async def fall_analysis(
     prev_year = latest_year - 1
 
     # Query for each period
-    async def get_pair(model, field, prev_val, latest_val):
-        latest = await db.scalar(
-            select(model).where((model.patient_id == patient.id) & (getattr(model, field) == latest_val))
-        )
-        prev = await db.scalar(
-            select(model).where((model.patient_id == patient.id) & (getattr(model, field) == prev_val))
-        )
-        return {"previous": prev, "latest": latest}
-
     week_pair, month_pair, year_pair = await asyncio.gather(
-        get_pair(WeeklyAverage, "report_week", prev_week, latest_week),
-        get_pair(MonthlyAverage, "report_month", prev_month, latest_month),
-        get_pair(YearlyAverage, "report_year", prev_year, latest_year),
+        get_report_pair(db, patient.id, WeeklyAverage, "report_week", prev_week, latest_week),
+        get_report_pair(db, patient.id, MonthlyAverage, "report_month", prev_month, latest_month),
+        get_report_pair(db, patient.id, YearlyAverage, "report_year", prev_year, latest_year),
     )
 
     return {
