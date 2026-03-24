@@ -3,7 +3,7 @@ import logging
 import os
 
 from apscheduler.schedulers.blocking import BlockingScheduler
-from sqlalchemy import Date, Integer, cast, create_engine, delete, extract, func, select
+from sqlalchemy import Integer, cast, create_engine, delete, extract, func, select
 from sqlalchemy.orm import sessionmaker
 
 from app.models.orm import DailyAverage, MonthlyAverage, WeeklyAverage, WindowReport, YearlyAverage
@@ -50,10 +50,7 @@ def calculate_averages_for_date(target_date: date, patient_id: int | None = None
     with session_local() as db:
         try:
             next_day = target_date + timedelta(days=1)
-            check_cond = [
-                WindowReport.timestamp >= target_date,
-                WindowReport.timestamp < next_day
-            ]
+            check_cond = [WindowReport.timestamp >= target_date, WindowReport.timestamp < next_day]
             if patient_id is not None:
                 check_cond.append(WindowReport.patient_id == patient_id)
 
