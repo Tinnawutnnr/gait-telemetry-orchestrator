@@ -1,6 +1,5 @@
 import asyncio
 from datetime import date, timedelta
-from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
@@ -11,8 +10,8 @@ from app.core.dependencies import (
     _get_caretaker_profile,
     _get_patient_profile,
     get_authorized_patient_for_caretaker,
-    require_role,
     get_report_pair,
+    require_role,
 )
 from app.models.orm import (
     AnomalyLog,
@@ -103,7 +102,7 @@ async def get_patient_profile(
     )
 
 
-@router.get("/dailyAverage/{username}", response_model=List[DailyAverageSchema])
+@router.get("/dailyAverage/{username}", response_model=list[DailyAverageSchema])
 async def get_patient_daily_average(
     patient: Patient = Depends(get_authorized_patient_for_caretaker), db: AsyncSession = Depends(get_db)
 ):
@@ -111,7 +110,7 @@ async def get_patient_daily_average(
     return result.scalars().all()
 
 
-@router.get("/weeklyAverage/{username}", response_model=List[WeeklyAverageSchema])
+@router.get("/weeklyAverage/{username}", response_model=list[WeeklyAverageSchema])
 async def get_patient_weekly_average(
     patient: Patient = Depends(get_authorized_patient_for_caretaker), db: AsyncSession = Depends(get_db)
 ):
@@ -119,7 +118,7 @@ async def get_patient_weekly_average(
     return result.scalars().all()
 
 
-@router.get("/monthlyAverage/{username}", response_model=List[MonthlyAverageSchema])
+@router.get("/monthlyAverage/{username}", response_model=list[MonthlyAverageSchema])
 async def get_patient_monthly_average(
     patient: Patient = Depends(get_authorized_patient_for_caretaker), db: AsyncSession = Depends(get_db)
 ):
@@ -127,7 +126,7 @@ async def get_patient_monthly_average(
     return result.scalars().all()
 
 
-@router.get("/yearlyAverage/{username}", response_model=List[YearlyAverageSchema])
+@router.get("/yearlyAverage/{username}", response_model=list[YearlyAverageSchema])
 async def get_patient_yearly_average(
     patient: Patient = Depends(get_authorized_patient_for_caretaker), db: AsyncSession = Depends(get_db)
 ):
@@ -135,7 +134,7 @@ async def get_patient_yearly_average(
     return result.scalars().all()
 
 
-@router.get("/anomalyLog/{username}", response_model=List[AnomalyLogSchema])
+@router.get("/anomalyLog/{username}", response_model=list[AnomalyLogSchema])
 async def get_patient_anomaly_log(
     patient: Patient = Depends(get_authorized_patient_for_caretaker), db: AsyncSession = Depends(get_db)
 ):
@@ -143,7 +142,7 @@ async def get_patient_anomaly_log(
     return result.scalars().all()
 
 
-@router.get("/dailyAverage/by-date/{username}", response_model=Optional[DailyAverageSchema])
+@router.get("/dailyAverage/by-date/{username}", response_model=DailyAverageSchema | None)
 async def get_patient_daily_average_by_date(
     date_str: str = Query(..., description="Date in YYYY-MM-DD format"),
     patient: Patient = Depends(get_authorized_patient_for_caretaker),

@@ -1,6 +1,5 @@
 import asyncio
 from datetime import date, timedelta
-from typing import Any, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import desc, select
@@ -74,7 +73,7 @@ async def get_window_reports(
     return latest_report
 
 
-@router.get("/me/dailyAverage", response_model=List[DailyAverageSchema])
+@router.get("/me/dailyAverage", response_model=list[DailyAverageSchema])
 async def get_daily_average(
     patient: Patient = Depends(get_current_patient_profile),
     db: AsyncSession = Depends(get_db),
@@ -84,7 +83,7 @@ async def get_daily_average(
     return daily_avg
 
 
-@router.get("/me/weeklyAverage", response_model=List[WeeklyAverageSchema])
+@router.get("/me/weeklyAverage", response_model=list[WeeklyAverageSchema])
 async def get_weekly_average(
     patient: Patient = Depends(get_current_patient_profile),
     db: AsyncSession = Depends(get_db),
@@ -94,7 +93,7 @@ async def get_weekly_average(
     return weekly_avg
 
 
-@router.get("/me/monthlyAverage", response_model=List[MonthlyAverageSchema])
+@router.get("/me/monthlyAverage", response_model=list[MonthlyAverageSchema])
 async def get_monthly_average(
     patient: Patient = Depends(get_current_patient_profile),
     db: AsyncSession = Depends(get_db),
@@ -104,7 +103,7 @@ async def get_monthly_average(
     return monthly_avg
 
 
-@router.get("/me/yearlyAverage", response_model=List[YearlyAverageSchema])
+@router.get("/me/yearlyAverage", response_model=list[YearlyAverageSchema])
 async def get_yearly_average(
     patient: Patient = Depends(get_current_patient_profile),
     db: AsyncSession = Depends(get_db),
@@ -114,7 +113,7 @@ async def get_yearly_average(
     return yearly_avg
 
 
-@router.get("/me/anomalyLog", response_model=List[AnomalyLogSchema])
+@router.get("/me/anomalyLog", response_model=list[AnomalyLogSchema])
 async def get_anomaly_log(
     patient: Patient = Depends(get_current_patient_profile),
     db: AsyncSession = Depends(get_db),
@@ -135,7 +134,7 @@ async def get_patient_id_by_telemetry_token(
     return patient.id
 
 
-@router.get("/me/dailyAverage/byDate", response_model=Optional[DailyAverageSchema])
+@router.get("/me/dailyAverage/byDate", response_model=DailyAverageSchema | None)
 async def get_daily_average_by_date(
     date_str: str = Query(..., description="Date in YYYY-MM-DD format"),
     patient: Patient = Depends(get_current_patient_profile),

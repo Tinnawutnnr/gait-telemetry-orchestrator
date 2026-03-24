@@ -1,3 +1,4 @@
+import asyncio
 from typing import TypeVar
 
 from fastapi import Depends, HTTPException, status
@@ -6,7 +7,6 @@ import jwt
 from jwt.exceptions import PyJWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-import asyncio
 
 from app.core.config import settings
 from app.core.database import get_db
@@ -76,8 +76,7 @@ async def get_authorized_patient_for_caretaker(
     db: AsyncSession = Depends(get_db),
 ) -> Patient:
     caretaker, patient = await asyncio.gather(
-        _get_caretaker_profile(current_user, db),
-        _get_patient_profile(username, db)
+        _get_caretaker_profile(current_user, db), _get_patient_profile(username, db)
     )
 
     if not patient.caretaker_id:
@@ -101,18 +100,12 @@ async def get_current_patient_profile(
 
 T = TypeVar("T")
 
+
 async def get_report_pair(
-    db: AsyncSession,
-    patient_id: int,
-    model: type[T],
-    field: str,
-    prev_val: str | int,
-    latest_val: str | int
+    db: AsyncSession, patient_id: int, model: type[T], field: str, prev_val: str | int, latest_val: str | int
 ) -> dict[str, T | None]:
     async def fetch(val: str | int) -> T | None:
-        return await db.scalar(
-            select(model).where((model.patient_id == patient_id) & (getattr(model, field) == val))
-        )
+        return await db.scalar(select(model).where((model.patient_id == patient_id) & (getattr(model, field) == val)))
 
     prev, latest = await asyncio.gather(fetch(prev_val), fetch(latest_val))
     return {"previous": prev, "latest": latest}
