@@ -94,7 +94,7 @@ async def get_user_id_from_token(token: str) -> str | None:
     if token in _TOKEN_TO_USER_CACHE:
         return _TOKEN_TO_USER_CACHE[token]
 
-    api_url = f"{API_BASE_URL}/api/v1/patients/me/{token}"
+    api_url = f"{API_BASE_URL}/api/v1/patients/{token}"
     async with httpx.AsyncClient() as client:
         try:
             response = await client.get(api_url, timeout=5.0)
