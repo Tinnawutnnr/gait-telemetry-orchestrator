@@ -78,7 +78,7 @@ def save_to_database(report_dict, anomaly_dict=None):
             log.error(f"Database Insert Failed: {e}")
 
 
-def create_window_report_json(ml_result, patient_id, system, current_time: datetime):
+def create_window_report_json(ml_result, patient_id, current_time: datetime):
     # WindowReport
     report = {
         "window_report_id": str(uuid.uuid4()),
@@ -120,10 +120,11 @@ def create_window_report_json(ml_result, patient_id, system, current_time: datet
         report["stride_cv"] = params.get("stride_cv")
         report["n_strides"] = params.get("n_strides")
 
-        report["steps"] = system.total_steps
-        report["calories"] = system.total_calories
-        stride_length_m = (system.user_height_cm * 0.415) / 100
-        report["distance_m"] = system.total_steps * stride_length_m
+        metrics = ml_result.get("metrics", {})
+        
+        report["steps"] = int(metrics.get("steps", 0))
+        report["calories"] = float(metrics.get("calories", 0.0))
+        report["distance_m"] = float(metrics.get("distance_m", 0.0))
 
     return report
 
@@ -321,7 +322,7 @@ async def run_worker():
                         log.info(f"[Patient {patient_id}] ML Report: {result.get('type')}")
                         current_timestamp = datetime.now(UTC)
 
-                        window_report_data = create_window_report_json(result, patient_id, system, current_timestamp)
+                        window_report_data = create_window_report_json(result, patient_id, current_timestamp)
 
                         # Save to DB only when status is MONITORING
                         if window_report_data["status"] == "MONITORING":

@@ -172,7 +172,7 @@ class GaitSystem:
                 "contribution": contribution_info,
                 "params": params,
                 "metrics": {
-                    "steps": window_steps,
+                    "steps": max(window_steps, self.total_steps),
                     "calories": f"{window_kcal:.2f}",
                     "distance_m": f"{window_dist:.2f}",
                 },
