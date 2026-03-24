@@ -1,6 +1,7 @@
-from datetime import datetime, timedelta, date
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy import select, desc
+from datetime import date, timedelta
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -281,10 +282,7 @@ async def get_patient_daily_average_by_date(
         raise HTTPException(status_code=403, detail="Unauthorized caretaker or patient not found.")
 
     result = await db.execute(
-        select(DailyAverage).where(
-            (DailyAverage.patient_id == patient.id) &
-            (DailyAverage.report_date == day)
-        )
+        select(DailyAverage).where((DailyAverage.patient_id == patient.id) & (DailyAverage.report_date == day))
     )
     daily_avg = result.scalars().first()
     if not daily_avg:
@@ -328,22 +326,16 @@ async def get_patient_fall_analysis(
     latest_week = week_key(ref_date)
     prev_week = week_key(ref_date - timedelta(weeks=1))
     latest_month = month_key(ref_date)
-    prev_month = month_key((ref_date.replace(day=1) - timedelta(days=1)))
+    prev_month = month_key(ref_date.replace(day=1) - timedelta(days=1))
     latest_year = year_key(ref_date)
     prev_year = latest_year - 1
 
     async def get_pair(model, field, prev_val, latest_val):
         latest = await db.scalar(
-            select(model).where(
-                (getattr(model, "patient_id") == patient.id) &
-                (getattr(model, field) == latest_val)
-            )
+            select(model).where((model.patient_id == patient.id) & (getattr(model, field) == latest_val))
         )
         prev = await db.scalar(
-            select(model).where(
-                (getattr(model, "patient_id") == patient.id) &
-                (getattr(model, field) == prev_val)
-            )
+            select(model).where((model.patient_id == patient.id) & (getattr(model, field) == prev_val))
         )
         if not latest or not prev:
             raise HTTPException(status_code=404, detail=f"Not enough data for {model.__tablename__}")

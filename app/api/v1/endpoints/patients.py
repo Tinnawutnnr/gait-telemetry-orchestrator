@@ -1,6 +1,6 @@
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -180,7 +180,7 @@ async def get_patient_id_by_telemetry_token(
 
 @router.get("/me/dailyAverage/byDate")
 async def get_daily_average_by_date(
-    date_str: str,  
+    date_str: str,
     current_user: User = Depends(require_role("patient")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -194,10 +194,7 @@ async def get_daily_average_by_date(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient profile not found.")
 
     result = await db.execute(
-        select(DailyAverage).where(
-            (DailyAverage.patient_id == patient.id) &
-            (DailyAverage.report_date == day)
-        )
+        select(DailyAverage).where((DailyAverage.patient_id == patient.id) & (DailyAverage.report_date == day))
     )
     daily_avg = result.scalars().first()
     if not daily_avg:
@@ -234,26 +231,22 @@ async def fall_analysis(
     latest_week = week_key(ref_date)
     prev_week = week_key(ref_date - timedelta(weeks=1))
     latest_month = month_key(ref_date)
-    prev_month = month_key((ref_date.replace(day=1) - timedelta(days=1)))
+    prev_month = month_key(ref_date.replace(day=1) - timedelta(days=1))
     latest_year = year_key(ref_date)
     prev_year = latest_year - 1
 
     # Query for each period
     async def get_pair(model, field, prev_val, latest_val):
         latest = await db.scalar(
-            select(model).where(
-                (getattr(model, "patient_id") == patient.id) &
-                (getattr(model, field) == latest_val)
-            )
+            select(model).where((model.patient_id == patient.id) & (getattr(model, field) == latest_val))
         )
         prev = await db.scalar(
-            select(model).where(
-                (getattr(model, "patient_id") == patient.id) &
-                (getattr(model, field) == prev_val)
-            )
+            select(model).where((model.patient_id == patient.id) & (getattr(model, field) == prev_val))
         )
         if not latest or not prev:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Not enough data for {model.__tablename__}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=f"Not enough data for {model.__tablename__}"
+            )
         return {"previous": prev, "latest": latest}
 
     week_pair = await get_pair(WeeklyAverage, "report_week", prev_week, latest_week)
