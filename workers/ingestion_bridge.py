@@ -11,6 +11,7 @@ from typing import NoReturn
 
 from aiokafka import AIOKafkaProducer
 import aiomqtt
+import httpx
 
 # Structured logging
 logging.basicConfig(
@@ -53,6 +54,7 @@ MQTT_USE_TLS: bool = os.environ.get("MQTT_USE_TLS", "true").lower() in {"1", "tr
 MQTT_TOPIC: str = "gait/telemetry/+"
 MQTT_QOS: int = _get_int_env("MQTT_QOS", 1)
 
+API_BASE_URL: str = os.environ.get("API_BASE_URL", "http://api:8000")
 
 # Backoff parameters (seconds)
 _BACKOFF_BASE: float = 1.0
@@ -60,6 +62,8 @@ _BACKOFF_CAP: float = 60.0
 _BACKOFF_FACTOR: float = 2.0
 MAX_MQTT_RETRIES: int = 5
 
+# Cache for telemetry tokens
+_TOKEN_TO_USER_CACHE: dict[str, str] = {}
 
 # Shutdown coordination
 _shutdown_event: asyncio.Event = asyncio.Event()
@@ -83,6 +87,27 @@ async def _interruptible_sleep(delay: float) -> bool:
         return True
     except TimeoutError:
         return False
+
+
+async def get_user_id_from_token(token: str) -> str | None:
+    # Check cache first to avoid high API load
+    if token in _TOKEN_TO_USER_CACHE:
+        return _TOKEN_TO_USER_CACHE[token]
+
+    api_url = f"{API_BASE_URL}/api/v1/patients/me/{token}"
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(api_url, timeout=5.0)
+            if response.status_code == 200:
+                user_id = str(response.json())
+                _TOKEN_TO_USER_CACHE[token] = user_id
+                log.info("Cached patient_id %s for telemetry_token %s", user_id, token)
+                return user_id
+            log.warning("API returned status %d for token %s", response.status_code, token)
+            return None
+        except httpx.HTTPError as e:
+            log.error("HTTPError fetching user_id for token %s: %s", token, e)
+            return None
 
 
 async def _run_bridge() -> None:
@@ -171,7 +196,12 @@ async def _run_bridge() -> None:
                         log.warning("Skipping malformed topic: %s", topic_str)
                         continue
 
-                    user_id = parts[2]
+                    telemetry_token = parts[2]
+
+                    user_id = await get_user_id_from_token(telemetry_token)
+                    if not user_id:
+                        log.debug("Unresolved telemetry_token: %s - skipping", telemetry_token)
+                        continue
 
                     # Send raw bytes directly to Kafka
                     raw_payload: bytes = (

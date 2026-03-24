@@ -165,3 +165,14 @@ async def get_anomaly_log(
     if not anomaly_log:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Requested report not found.")
     return anomaly_log
+
+
+@router.get("/me/{telemetry_token}")
+async def get_patient_id_by_telemetry_token(
+    telemetry_token: str,
+    db: AsyncSession = Depends(get_db),
+) -> int:
+    patient = await db.scalar(select(Patient).where(Patient.telemetry_token == telemetry_token))
+    if patient is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient profile not found")
+    return patient.id
