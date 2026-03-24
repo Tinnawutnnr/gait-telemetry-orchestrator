@@ -186,8 +186,10 @@ async def get_daily_average_by_date(
 ):
     try:
         day = date.fromisoformat(date_str)
-    except Exception:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid date format. Use YYYY-MM-DD.")
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid date format. Use YYYY-MM-DD."
+        ) from e
 
     patient = await db.scalar(select(Patient).where(Patient.user_id == current_user.id))
     if not patient:
@@ -210,8 +212,10 @@ async def fall_analysis(
 ):
     try:
         ref_date = date.fromisoformat(date_str)
-    except Exception:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid date format. Use YYYY-MM-DD.")
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid date format. Use YYYY-MM-DD."
+        ) from e
 
     patient = await db.scalar(select(Patient).where(Patient.user_id == current_user.id))
     if not patient:

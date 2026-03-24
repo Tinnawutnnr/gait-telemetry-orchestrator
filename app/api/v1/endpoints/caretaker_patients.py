@@ -1,3 +1,4 @@
+import asyncio
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -23,9 +24,41 @@ router = APIRouter(prefix="/caretakers/patients", tags=["caretaker-patients"])
 
 async def _get_caretaker_profile(user: User, db: AsyncSession) -> Caretaker:
     caretaker = await db.scalar(select(Caretaker).where(Caretaker.user_id == user.id))
-    if caretaker is None:
+    if not caretaker:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caretaker profile not found")
     return caretaker
+
+
+async def _get_patient_profile(username: str, db: AsyncSession) -> Patient:
+    patient_user = await db.scalar(select(User).where(User.username == username, User.role == "patient"))
+    if not patient_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient username not found")
+
+    patient = await db.scalar(select(Patient).where(Patient.user_id == patient_user.id))
+    if not patient:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient profile not found")
+    return patient
+
+
+async def get_authorized_patient_for_caretaker(
+    username: str,
+    current_user: User = Depends(require_role("caretaker")),
+    db: AsyncSession = Depends(get_db),
+) -> Patient:
+    # 1. Get Caretaker
+    caretaker = await _get_caretaker_profile(current_user, db)
+
+    # 2. Get Patient Profile
+    patient = await _get_patient_profile(username, db)
+
+    if not patient.caretaker_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Patient is not linked to any caretaker")
+
+    # 3. Check Ownership (Authorization)
+    if patient.caretaker_id != caretaker.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Patient is not linked to you")
+
+    return patient
 
 
 @router.post("", status_code=status.HTTP_204_NO_CONTENT)
@@ -37,16 +70,10 @@ async def link_patient(
     # Link a patient (by username) to this caretaker.
     caretaker = await _get_caretaker_profile(current_user, db)
 
-    patient_user = await db.scalar(select(User).where(User.username == body.username, User.role == "patient"))
-    if patient_user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient user not found")
+    patient = await _get_patient_profile(body.username, db)
 
-    patient = await db.scalar(select(Patient).where(Patient.user_id == patient_user.id))
-    if patient is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient profile not found")
-
-    if patient.caretaker_id is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Patient already linked to a caretaker")
+    if patient.caretaker_id:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Patient is already linked to a caretaker")
 
     patient.caretaker_id = caretaker.id
     try:
@@ -58,24 +85,9 @@ async def link_patient(
 
 @router.delete("/{username}", status_code=status.HTTP_204_NO_CONTENT)
 async def unlink_patient(
-    username: str,
-    current_user: User = Depends(require_role("caretaker")),
-    db: AsyncSession = Depends(get_db),
+    patient: Patient = Depends(get_authorized_patient_for_caretaker), db: AsyncSession = Depends(get_db)
 ) -> None:
     # Unlink a patient from this caretaker (soft-unlink: sets caretaker_id to NULL).
-    caretaker = await _get_caretaker_profile(current_user, db)
-
-    patient_user = await db.scalar(select(User).where(User.username == username, User.role == "patient"))
-    if patient_user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient user not found")
-
-    patient = await db.scalar(select(Patient).where(Patient.user_id == patient_user.id))
-    if patient is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient profile not found")
-
-    if patient.caretaker_id != caretaker.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Patient is not linked to you")
-
     patient.caretaker_id = None
     try:
         await db.commit()
@@ -104,24 +116,8 @@ async def list_patients(
 
 @router.get("/{username}", response_model=PatientProfileResponse)
 async def get_patient_profile(
-    username: str,
-    current_user: User = Depends(require_role("caretaker")),
-    db: AsyncSession = Depends(get_db),
+    patient: Patient = Depends(get_authorized_patient_for_caretaker),
 ) -> PatientProfileResponse:
-    # Get the full profile of a patient linked to this caretaker.
-    caretaker = await _get_caretaker_profile(current_user, db)
-
-    patient_user = await db.scalar(select(User).where((User.username == username) & (User.role == "patient")))
-    if patient_user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient user not found")
-
-    patient = await db.scalar(select(Patient).where(Patient.user_id == patient_user.id))
-    if patient is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient profile not found")
-
-    if patient.caretaker_id != caretaker.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Patient is not linked to you")
-
     return PatientProfileResponse(
         id=patient.id,
         first_name=patient.first_name,
@@ -134,185 +130,71 @@ async def get_patient_profile(
 
 @router.get("/dailyAverage/{username}")
 async def get_patient_daily_average(
-    username: str,
-    current_user: User = Depends(require_role("caretaker")),
-    db: AsyncSession = Depends(get_db),
+    patient: Patient = Depends(get_authorized_patient_for_caretaker), db: AsyncSession = Depends(get_db)
 ):
-    caretaker = await _get_caretaker_profile(current_user, db)
-    patient_user = await db.scalar(select(User).where((User.username == username) & (User.role == "patient")))
-
-    if patient_user is None:
-        raise HTTPException(status_code=404, detail="Patient username not found")
-    patient = await db.scalar(select(Patient).where(Patient.user_id == patient_user.id))
-
-    if patient is None:
-        raise HTTPException(status_code=404, detail="Patient not found")
-    if patient.caretaker_id != caretaker.id:
-        raise HTTPException(status_code=403, detail="Unauthorized caretaker")
-
     result = await db.execute(select(DailyAverage).where(DailyAverage.patient_id == patient.id))
-    daily_avg = result.scalars().all()
-    if not daily_avg:
-        raise HTTPException(status_code=404, detail="Report not found")
-    return daily_avg
+    return result.scalars().all()
 
 
 @router.get("/weeklyAverage/{username}")
 async def get_patient_weekly_average(
-    username: str,
-    current_user: User = Depends(require_role("caretaker")),
-    db: AsyncSession = Depends(get_db),
+    patient: Patient = Depends(get_authorized_patient_for_caretaker), db: AsyncSession = Depends(get_db)
 ):
-    caretaker = await _get_caretaker_profile(current_user, db)
-    patient_user = await db.scalar(select(User).where((User.username == username) & (User.role == "patient")))
-
-    if patient_user is None:
-        raise HTTPException(status_code=404, detail="Patient username not found")
-    patient = await db.scalar(select(Patient).where(Patient.user_id == patient_user.id))
-
-    if patient is None:
-        raise HTTPException(status_code=404, detail="Patient not found")
-    if patient.caretaker_id != caretaker.id:
-        raise HTTPException(status_code=403, detail="Unauthorized caretaker")
-
     result = await db.execute(select(WeeklyAverage).where(WeeklyAverage.patient_id == patient.id))
-    weekly_avg = result.scalars().all()
-    if not weekly_avg:
-        raise HTTPException(status_code=404, detail="Report not found")
-    return weekly_avg
+    return result.scalars().all()
 
 
 @router.get("/monthlyAverage/{username}")
 async def get_patient_monthly_average(
-    username: str,
-    current_user: User = Depends(require_role("caretaker")),
-    db: AsyncSession = Depends(get_db),
+    patient: Patient = Depends(get_authorized_patient_for_caretaker), db: AsyncSession = Depends(get_db)
 ):
-    caretaker = await _get_caretaker_profile(current_user, db)
-    patient_user = await db.scalar(select(User).where((User.username == username) & (User.role == "patient")))
-
-    if patient_user is None:
-        raise HTTPException(status_code=404, detail="Patient username not found")
-    patient = await db.scalar(select(Patient).where(Patient.user_id == patient_user.id))
-
-    if patient is None:
-        raise HTTPException(status_code=404, detail="Patient not found")
-    if patient.caretaker_id != caretaker.id:
-        raise HTTPException(status_code=403, detail="Unauthorized caretaker")
-
     result = await db.execute(select(MonthlyAverage).where(MonthlyAverage.patient_id == patient.id))
-    monthly_avg = result.scalars().all()
-    if not monthly_avg:
-        raise HTTPException(status_code=404, detail="Report not found")
-    return monthly_avg
+    return result.scalars().all()
 
 
 @router.get("/yearlyAverage/{username}")
 async def get_patient_yearly_average(
-    username: str,
-    current_user: User = Depends(require_role("caretaker")),
-    db: AsyncSession = Depends(get_db),
+    patient: Patient = Depends(get_authorized_patient_for_caretaker), db: AsyncSession = Depends(get_db)
 ):
-    caretaker = await _get_caretaker_profile(current_user, db)
-    patient_user = await db.scalar(select(User).where((User.username == username) & (User.role == "patient")))
-
-    if patient_user is None:
-        raise HTTPException(status_code=404, detail="Patient username not found")
-    patient = await db.scalar(select(Patient).where(Patient.user_id == patient_user.id))
-
-    if patient is None:
-        raise HTTPException(status_code=404, detail="Patient not found")
-    if patient.caretaker_id != caretaker.id:
-        raise HTTPException(status_code=403, detail="Unauthorized caretaker")
-
     result = await db.execute(select(YearlyAverage).where(YearlyAverage.patient_id == patient.id))
-    yearly_avg = result.scalars().all()
-    if not yearly_avg:
-        raise HTTPException(status_code=404, detail="Report not found")
-    return yearly_avg
+    return result.scalars().all()
 
 
 @router.get("/anomalyLog/{username}")
 async def get_patient_anomaly_log(
-    username: str,
-    current_user: User = Depends(require_role("caretaker")),
-    db: AsyncSession = Depends(get_db),
+    patient: Patient = Depends(get_authorized_patient_for_caretaker), db: AsyncSession = Depends(get_db)
 ):
-    caretaker = await _get_caretaker_profile(current_user, db)
-    patient_user = await db.scalar(select(User).where((User.username == username) & (User.role == "patient")))
-
-    if patient_user is None:
-        raise HTTPException(status_code=404, detail="Patient username not found")
-    patient = await db.scalar(select(Patient).where(Patient.user_id == patient_user.id))
-
-    if patient is None:
-        raise HTTPException(status_code=404, detail="Patient not found")
-    if patient.caretaker_id != caretaker.id:
-        raise HTTPException(status_code=403, detail="Unauthorized caretaker")
-
     result = await db.execute(select(AnomalyLog).where(AnomalyLog.patient_id == patient.id))
-    anomaly_log = result.scalars().all()
-    if not anomaly_log:
-        raise HTTPException(status_code=404, detail="Report not found")
-    return anomaly_log
+    return result.scalars().all()
 
 
-@router.get("/dailyAverage/byDate/{username}")
+@router.get("/dailyAverage/by-date/{username}")
 async def get_patient_daily_average_by_date(
-    username: str,
-    date_str: str,
-    current_user: User = Depends(require_role("caretaker")),
+    date_str: str = Query(..., description="Date in YYYY-MM-DD format"),
+    patient: Patient = Depends(get_authorized_patient_for_caretaker),
     db: AsyncSession = Depends(get_db),
 ):
     try:
         day = date.fromisoformat(date_str)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
-
-    caretaker = await db.scalar(select(Caretaker).where(Caretaker.user_id == current_user.id))
-    if not caretaker:
-        raise HTTPException(status_code=404, detail="Caretaker profile not found.")
-
-    patient_user = await db.scalar(select(User).where((User.username == username) & (User.role == "patient")))
-    if not patient_user:
-        raise HTTPException(status_code=404, detail="Patient username not found.")
-
-    patient = await db.scalar(select(Patient).where(Patient.user_id == patient_user.id))
-    if not patient or patient.caretaker_id != caretaker.id:
-        raise HTTPException(status_code=403, detail="Unauthorized caretaker or patient not found.")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.") from e
 
     result = await db.execute(
         select(DailyAverage).where((DailyAverage.patient_id == patient.id) & (DailyAverage.report_date == day))
     )
-    daily_avg = result.scalars().first()
-    if not daily_avg:
-        raise HTTPException(status_code=404, detail="Requested report not found.")
-    return daily_avg
+    return result.scalars().first()
 
 
 @router.get("/fallAnalysis/{username}")
 async def get_patient_fall_analysis(
-    username: str,
     date_str: str = Query(..., description="Date in YYYY-MM-DD format"),
-    current_user: User = Depends(require_role("caretaker")),
+    patient: Patient = Depends(get_authorized_patient_for_caretaker),
     db: AsyncSession = Depends(get_db),
 ):
     try:
         ref_date = date.fromisoformat(date_str)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
-
-    caretaker = await db.scalar(select(Caretaker).where(Caretaker.user_id == current_user.id))
-    if not caretaker:
-        raise HTTPException(status_code=404, detail="Caretaker profile not found.")
-
-    patient_user = await db.scalar(select(User).where((User.username == username) & (User.role == "patient")))
-    if not patient_user:
-        raise HTTPException(status_code=404, detail="Patient username not found.")
-
-    patient = await db.scalar(select(Patient).where(Patient.user_id == patient_user.id))
-    if not patient or patient.caretaker_id != caretaker.id:
-        raise HTTPException(status_code=403, detail="Unauthorized caretaker or patient not found.")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.") from e
 
     def week_key(dt):
         return f"{dt.isocalendar()[0]}-W{dt.isocalendar()[1]:02d}"
@@ -337,13 +219,14 @@ async def get_patient_fall_analysis(
         prev = await db.scalar(
             select(model).where((model.patient_id == patient.id) & (getattr(model, field) == prev_val))
         )
-        if not latest or not prev:
-            raise HTTPException(status_code=404, detail=f"Not enough data for {model.__tablename__}")
         return {"previous": prev, "latest": latest}
 
-    week_pair = await get_pair(WeeklyAverage, "report_week", prev_week, latest_week)
-    month_pair = await get_pair(MonthlyAverage, "report_month", prev_month, latest_month)
-    year_pair = await get_pair(YearlyAverage, "report_year", prev_year, latest_year)
+    # get all in 1 time
+    week_pair, month_pair, year_pair = await asyncio.gather(
+        get_pair(WeeklyAverage, "report_week", prev_week, latest_week),
+        get_pair(MonthlyAverage, "report_month", prev_month, latest_month),
+        get_pair(YearlyAverage, "report_year", prev_year, latest_year),
+    )
 
     return {
         "week": week_pair,
