@@ -25,7 +25,6 @@ def get_session_local() -> sessionmaker:
         if not database_url:
             raise RuntimeError("DATABASE_URL is not set")
 
-        # ใส่ pool_size และ max_overflow เพื่อป้องกัน Connection เต็มจนแอปค้าง!
         _engine = create_engine(database_url, pool_pre_ping=True, pool_size=5, max_overflow=10)
         _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
     return _SessionLocal
