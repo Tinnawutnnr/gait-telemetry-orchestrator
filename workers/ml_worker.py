@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 import json
 import logging
 import os
@@ -332,7 +332,7 @@ async def run_worker():
                                 anomaly_log_data = create_anomaly_log_json(result, patient_id)  # create log
                                 log.info("Anomaly detected saving to anomaly log")
                                 patient_email = await get_patient_email(patient_id)
-                                #send email
+                                # send email
                                 try:
                                     email_task = asyncio.create_task(
                                         send_anomaly_alert_email(
@@ -374,7 +374,7 @@ async def run_worker():
 
             except Exception as e:
                 log.error(f"Error processing chunk for patient {patient_id}: {e}", exc_info=True)
-                continue # Skip bad chunk and keep listening
+                continue  # Skip bad chunk and keep listening
 
     except Exception as e:
         log.error(f"Worker crashed: {e}")
