@@ -49,7 +49,11 @@ def calculate_averages_for_date(target_date: date, patient_id: int | None = None
 
     with session_local() as db:
         try:
-            check_cond = [cast(WindowReport.timestamp, Date) == target_date]
+            next_day = target_date + timedelta(days=1)
+            check_cond = [
+                WindowReport.timestamp >= target_date,
+                WindowReport.timestamp < next_day
+            ]
             if patient_id is not None:
                 check_cond.append(WindowReport.patient_id == patient_id)
 
@@ -59,7 +63,11 @@ def calculate_averages_for_date(target_date: date, patient_id: int | None = None
                 log.info(f"No walking data found for {target_date} (Patient: {patient_id}). Skipping aggregation.")
                 return
             # dailyAverage
-            daily_conditions = [cast(WindowReport.timestamp, Date) == target_date, WindowReport.status == "MONITORING"]
+            daily_conditions = [
+                WindowReport.timestamp >= target_date,
+                WindowReport.timestamp < next_day,
+                WindowReport.status == "MONITORING",
+            ]
             if patient_id is not None:
                 daily_conditions.append(WindowReport.patient_id == patient_id)
 
@@ -303,7 +311,7 @@ def calculate_averages_for_date(target_date: date, patient_id: int | None = None
             # Clean up data
             if patient_id is None:
                 cutoff_date = date.today() - timedelta(days=RETENTION_DAYS)
-                del_stmt = delete(WindowReport).where(cast(WindowReport.timestamp, Date) < cutoff_date)
+                del_stmt = delete(WindowReport).where(WindowReport.timestamp < cutoff_date)
                 del_result = db.execute(del_stmt)
                 db.commit()
                 log.info(f"Cleanup: Removed raw WindowReport older than {cutoff_date} ({del_result.rowcount} rows)")
