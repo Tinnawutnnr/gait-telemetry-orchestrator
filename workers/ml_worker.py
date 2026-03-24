@@ -121,7 +121,7 @@ def create_window_report_json(ml_result, patient_id, current_time: datetime):
         report["n_strides"] = params.get("n_strides")
 
         metrics = ml_result.get("metrics", {})
-        
+
         report["steps"] = int(metrics.get("steps", 0))
         report["calories"] = float(metrics.get("calories", 0.0))
         report["distance_m"] = float(metrics.get("distance_m", 0.0))

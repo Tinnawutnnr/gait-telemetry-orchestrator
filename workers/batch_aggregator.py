@@ -1,5 +1,4 @@
 from datetime import date, timedelta
-from functools import lru_cache
 import logging
 import os
 
@@ -18,20 +17,16 @@ RETENTION_DAYS = 0
 _engine = None
 _SessionLocal = None
 
+
 def get_session_local() -> sessionmaker:
     global _engine, _SessionLocal
     if _engine is None:
         database_url = os.getenv("DATABASE_URL")
         if not database_url:
             raise RuntimeError("DATABASE_URL is not set")
-        
+
         # ใส่ pool_size และ max_overflow เพื่อป้องกัน Connection เต็มจนแอปค้าง!
-        _engine = create_engine(
-            database_url, 
-            pool_pre_ping=True, 
-            pool_size=5, 
-            max_overflow=10
-        )
+        _engine = create_engine(database_url, pool_pre_ping=True, pool_size=5, max_overflow=10)
         _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
     return _SessionLocal
 
@@ -89,10 +84,9 @@ def calculate_averages_for_date(target_date: date, patient_id: int | None = None
 
             results_daily = db.execute(stmt_daily).all()
             for row in results_daily:
-                existing_daily = db.query(DailyAverage).filter_by(
-                    patient_id=row.patient_id, 
-                    report_date=target_date
-                ).first()
+                existing_daily = (
+                    db.query(DailyAverage).filter_by(patient_id=row.patient_id, report_date=target_date).first()
+                )
 
                 if existing_daily:
                     existing_daily.total_windows_analyzed = row.total_windows
@@ -122,7 +116,7 @@ def calculate_averages_for_date(target_date: date, patient_id: int | None = None
                         anomaly_count=row.anomaly_count or 0,
                     )
                     db.add(daily_record)
-            
+
             db.commit()
             log.info(f"Daily Average saved ({len(results_daily)} records)")
 
@@ -151,10 +145,9 @@ def calculate_averages_for_date(target_date: date, patient_id: int | None = None
 
             results_weekly = db.execute(stmt_weekly).all()
             for row in results_weekly:
-                existing_weekly = db.query(WeeklyAverage).filter_by(
-                    patient_id=row.patient_id, 
-                    report_week=target_week_str
-                ).first()
+                existing_weekly = (
+                    db.query(WeeklyAverage).filter_by(patient_id=row.patient_id, report_week=target_week_str).first()
+                )
 
                 if existing_weekly:
                     existing_weekly.total_windows_analyzed = row.total_windows
@@ -213,10 +206,9 @@ def calculate_averages_for_date(target_date: date, patient_id: int | None = None
 
             results_monthly = db.execute(stmt_monthly).all()
             for row in results_monthly:
-                existing_monthly = db.query(MonthlyAverage).filter_by(
-                    patient_id=row.patient_id, 
-                    report_month=target_month_str
-                ).first()
+                existing_monthly = (
+                    db.query(MonthlyAverage).filter_by(patient_id=row.patient_id, report_month=target_month_str).first()
+                )
 
                 if existing_monthly:
                     existing_monthly.total_windows_analyzed = row.total_windows
@@ -274,10 +266,9 @@ def calculate_averages_for_date(target_date: date, patient_id: int | None = None
 
             results_yearly = db.execute(stmt_yearly).all()
             for row in results_yearly:
-                existing_yearly = db.query(YearlyAverage).filter_by(
-                    patient_id=row.patient_id, 
-                    report_year=target_year_int
-                ).first()
+                existing_yearly = (
+                    db.query(YearlyAverage).filter_by(patient_id=row.patient_id, report_year=target_year_int).first()
+                )
 
                 if existing_yearly:
                     existing_yearly.total_windows_analyzed = row.total_windows
