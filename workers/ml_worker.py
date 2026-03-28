@@ -1,12 +1,12 @@
 import asyncio
-from datetime import UTC, datetime, timedelta, timezone
+import csv
+from datetime import UTC, datetime, timezone, timedelta
 import json
 import logging
 import os
 import signal
 import time
 import uuid
-import csv
 
 from aiokafka import AIOKafkaConsumer
 from sqlalchemy import create_engine, select
@@ -17,7 +17,7 @@ from app.services.email import send_anomaly_alert_email
 from workers.realtime_processor import GaitSystem
 
 BKK_TZ = timezone(timedelta(hours=7))
-TEST_CSV_FILE = "/tmp/gait_test_metrics.csv"
+TEST_CSV_FILE = "gait_test_metrics.csv"
 
 if not os.path.exists(TEST_CSV_FILE):
     with open(TEST_CSV_FILE, mode='w', newline='', encoding='utf-8') as f:
@@ -340,12 +340,21 @@ async def run_worker():
                     active_buffers[patient_id] = buffer[100:]
                     buffer = active_buffers[patient_id]
 
+                    t0_ml = time.perf_counter()
                     result = await asyncio.to_thread(system.process_stream_chunk, chunk)
+                    ml_proc_ms = (time.perf_counter() - t0_ml) * 1000
 
                     if result:
-                        log.info(f"[Patient {patient_id}] ML Report: {result.get('type')}")
-                        current_timestamp = datetime.now(UTC)
+                        now_bkk_str = datetime.now(BKK_TZ).strftime("%H:%M:%S.%f")[:-3]
+                        res_type = result.get("type")
+                        #scenario 3: noise/ non-walking rejection
+                        if res_type == "info":
+                            log.info(f"[{now_bkk_str}] 🛡️ [REJECTED] {result.get('msg')} | ML Time: {ml_proc_ms:.2f}ms")
+                            log_to_csv(patient_id, "INFO", "REJECTED", result.get('msg'), "-", ml_proc_ms, 0, ml_proc_ms)
+                            continue
 
+                        #log.info(f"[Patient {patient_id}] ML Report: {result.get('type')}")
+                        current_timestamp = datetime.now(UTC)
                         window_report_data = create_window_report_json(result, patient_id, current_timestamp)
 
                         event_label = ""
@@ -363,19 +372,11 @@ async def run_worker():
                             log.info(f"[{now_bkk_str}] {event_label} Progress: {progress} | ML Time: {ml_proc_ms:.2f}ms")
                             log_to_csv(patient_id, res_type.upper(), status_label, msg_score, root_cause, ml_proc_ms, 0, ml_proc_ms)
                             continue
-                        
-                        elif status_label == "MONITORING" and res_type == "status":
-                            log.info(f"[{now_bkk_str}] 🎉 [CALIBRATION COMPLETE] Ready to analyze! | ML Time: {ml_proc_ms:.2f}ms")
-                            log_to_csv(patient_id, "STATUS", "TRANSITION", "Calibration Complete", "-", ml_proc_ms, 0, ml_proc_ms)
-                            continue #skip db for max calibration
 
                         #SCENARIO 2 & 4: Monitoring (Normal / Anomaly)
-                        elif status_label == "MONITORING" and res_type == "analysis":
+                        elif status_label == "MONITORING":
                             gait_health = window_report_data.get("gait_health")
-                            raw_score = window_report_data.get('anomaly_score')
-                            safe_score = float(raw_score) if raw_score is not None else 0.0
-                            
-                            msg_score = f"Score: {safe_score:.2f}"
+                            msg_score = f"Score: {window_report_data.get('anomaly_score', 0):.2f}"
                             
                             if gait_health == "NORMAL":
                                 event_label = "✅ [NORMAL WALK]"
@@ -388,7 +389,6 @@ async def run_worker():
                                 
                                 log.info("Anomaly detected! Sending alert email...")
                                 patient_email = await get_patient_email(patient_id)
-                                # send email
                                 try:
                                     email_task = asyncio.create_task(
                                         send_anomaly_alert_email(
@@ -402,22 +402,20 @@ async def run_worker():
                                             timestamp=current_timestamp,
                                         )
                                     )
-
-                                    def _log_email_task_result(task: asyncio.Task, pid=patient_id) -> None:
-                                        try:
-                                            task.result()
-                                        except Exception as e:
-                                            log.error(f"[Patient {pid}] Failed to send anomaly alert email: {e}")
-
-                                    email_task.add_done_callback(_log_email_task_result)
+                                    email_task.add_done_callback(lambda t, pid=patient_id: t.exception() and log.error(f"[Patient {pid}] Failed to send email: {t.exception()}"))
                                 except Exception as e:
                                     log.error(f"[Patient {patient_id}] Failed to schedule anomaly alert email: {e}")
 
-                            await asyncio.to_thread(save_to_database, window_report_data, anomaly_log_data)
+                            # record database persistence only when monitoring
+                            t0_db = time.perf_counter()
+                            await asyncio.to_thread(save_to_database, window_report_data, anomaly_log_data if gait_health == "ANOMALY_DETECTED" else None)
+                            db_save_ms = (time.perf_counter() - t0_db) * 1000
+                            e2e_latency_ms = ml_proc_ms + db_save_ms
 
-                        else:
-                            # Skip saving if in CALIBRATING phase
-                            log.info(f"[Patient {patient_id}] Calibrating phase... Skipping DB save")
+                            log.info(f"   ↳ 💾 DB Save: {db_save_ms:.2f}ms | Total E2E Latency: {e2e_latency_ms:.2f}ms")
+                            
+                            # csv save
+                            log_to_csv(patient_id, res_type.upper(), status_label, msg_score, root_cause, ml_proc_ms, db_save_ms, e2e_latency_ms)
 
             except TimeoutError:
                 now_ts = time.monotonic()
