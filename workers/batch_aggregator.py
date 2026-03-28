@@ -72,9 +72,9 @@ def calculate_averages_for_date(target_date: date, patient_id: int | None = None
                 select(
                     WindowReport.patient_id,
                     func.count().label("total_windows"),
-                    func.max(WindowReport.steps).label("total_steps"),
-                    func.max(WindowReport.calories).label("total_calories"),
-                    func.max(WindowReport.distance_m).label("total_distance_m"),
+                    func.sum(WindowReport.steps).label("total_steps"),
+                    func.sum(WindowReport.calories).label("total_calories"),
+                    func.sum(WindowReport.distance_m).label("total_distance_m"),
                     func.avg(WindowReport.max_gyr_ms).label("avg_max_gyr_ms"),
                     func.avg(WindowReport.val_gyr_hs).label("avg_val_gyr_hs"),
                     func.avg(WindowReport.swing_time).label("avg_swing_time"),

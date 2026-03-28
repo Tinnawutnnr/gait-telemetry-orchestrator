@@ -15,6 +15,29 @@ from app.models.orm import AnomalyLog, Patient, User, WindowReport
 from app.services.email import send_anomaly_alert_email
 from workers.realtime_processor import GaitSystem
 
+BKK_TZ = timezone(timedelta(hours=7))
+TEST_CSV_FILE = "/tmp/gait_test_metrics.csv"
+
+if not os.path.exists(TEST_CSV_FILE):
+    with open(TEST_CSV_FILE, mode='w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "Timestamp_GMT7", "Patient_ID", "Event_Type", "Status", 
+            "Message_or_Score", "Root_Cause_Feature", 
+            "ML_Processing_ms", "DB_Save_ms", "E2E_Latency_ms"
+        ])
+
+
+def log_to_csv(patient_id, event_type, status, msg_or_score, root_cause, ml_ms, db_ms, e2e_ms):
+    now_bkk = datetime.now(BKK_TZ).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    with open(TEST_CSV_FILE, mode='a', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            now_bkk, patient_id, event_type, status, 
+            msg_or_score, root_cause, 
+            f"{ml_ms:.2f}", f"{db_ms:.2f}", f"{e2e_ms:.2f}"
+        ])
+
 # DB connection
 DATABASE_URL = os.getenv("DATABASE_URL")
 
@@ -324,13 +347,45 @@ async def run_worker():
 
                         window_report_data = create_window_report_json(result, patient_id, current_timestamp)
 
-                        # Save to DB only when status is MONITORING
-                        if window_report_data["status"] == "MONITORING":
-                            anomaly_log_data = None
+                        event_label = ""
+                        status_label = window_report_data["status"]
+                        msg_score = ""
+                        root_cause = "-"
+                        db_save_ms = 0.0 
+                        e2e_latency_ms = ml_proc_ms #if not go in db, time = ml
 
-                            if window_report_data.get("gait_health") == "ANOMALY_DETECTED":
-                                anomaly_log_data = create_anomaly_log_json(result, patient_id)  # create log
-                                log.info("Anomaly detected saving to anomaly log")
+                        #scenario 1: Calibration(normal walking)
+                        if status_label == "CALIBRATING":
+                            progress = result.get("progress", "Waiting")
+                            event_label = "⚙️ [CALIBRATION]"
+                            msg_score = progress
+                            log.info(f"[{now_bkk_str}] {event_label} Progress: {progress} | ML Time: {ml_proc_ms:.2f}ms")
+                            log_to_csv(patient_id, res_type.upper(), status_label, msg_score, root_cause, ml_proc_ms, 0, ml_proc_ms)
+                            continue
+                        
+                        elif status_label == "MONITORING" and res_type == "status":
+                            log.info(f"[{now_bkk_str}] 🎉 [CALIBRATION COMPLETE] Ready to analyze! | ML Time: {ml_proc_ms:.2f}ms")
+                            log_to_csv(patient_id, "STATUS", "TRANSITION", "Calibration Complete", "-", ml_proc_ms, 0, ml_proc_ms)
+                            continue #skip db for max calibration
+
+                        #SCENARIO 2 & 4: Monitoring (Normal / Anomaly)
+                        elif status_label == "MONITORING" and res_type == "analysis":
+                            gait_health = window_report_data.get("gait_health")
+                            raw_score = window_report_data.get('anomaly_score')
+                            safe_score = float(raw_score) if raw_score is not None else 0.0
+                            
+                            msg_score = f"Score: {safe_score:.2f}"
+                            
+                            if gait_health == "NORMAL":
+                                event_label = "✅ [NORMAL WALK]"
+                                log.info(f"[{now_bkk_str}] {event_label} {msg_score} | ML Time: {ml_proc_ms:.2f}ms")
+                            else:
+                                anomaly_log_data = create_anomaly_log_json(result, patient_id)
+                                root_cause = anomaly_log_data["root_cause_feature"]
+                                event_label = "🚨 [ANOMALY DETECTED]"
+                                log.warning(f"[{now_bkk_str}] {event_label} {msg_score} | Cause: {root_cause} | ML Time: {ml_proc_ms:.2f}ms")
+                                
+                                log.info("Anomaly detected! Sending alert email...")
                                 patient_email = await get_patient_email(patient_id)
                                 # send email
                                 try:
