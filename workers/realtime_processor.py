@@ -124,9 +124,9 @@ class GaitSystem:
                 "params": params,
                 "is_reliable": is_reliable_for_training,
                 "metrics": {
-                    "steps": window_steps,
-                    "calories": f"{window_kcal:.2f}",
-                    "distance_m": f"{window_dist:.2f}",
+                    "steps": int(window_steps),
+                    "calories": round(window_kcal, 2),
+                    "distance_m": round(window_dist, 2),
                 },
             }
             return report
@@ -172,9 +172,9 @@ class GaitSystem:
                 "contribution": contribution_info,
                 "params": params,
                 "metrics": {
-                    "steps": max(window_steps, self.total_steps),
-                    "calories": f"{window_kcal:.2f}",
-                    "distance_m": f"{window_dist:.2f}",
+                    "steps": int(window_steps),
+                    "calories": round(window_kcal, 2),
+                    "distance_m": round(window_dist, 2),
                 },
             }
 

@@ -1,5 +1,5 @@
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 import json
 import logging
 import os
@@ -14,6 +14,8 @@ from sqlalchemy.orm import sessionmaker
 from app.models.orm import AnomalyLog, Patient, User, WindowReport
 from app.services.email import send_anomaly_alert_email
 from workers.realtime_processor import GaitSystem
+
+BKK_TZ = timezone(timedelta(hours=7))
 
 # DB connection
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -79,7 +81,6 @@ def save_to_database(report_dict, anomaly_dict=None):
 
 
 def create_window_report_json(ml_result, patient_id, current_time: datetime):
-    # WindowReport
     report = {
         "window_report_id": str(uuid.uuid4()),
         "patient_id": patient_id,
@@ -99,19 +100,16 @@ def create_window_report_json(ml_result, patient_id, current_time: datetime):
         "distance_m": None,
     }
 
-    # case 1 : calibrate case
     if ml_result.get("type") == "status":
         status = ml_result.get("status") or "CALIBRATING"
         report["status"] = status
 
-    # case2 : monitoring
     elif ml_result.get("type") == "analysis":
         report["status"] = "MONITORING"
         report["gait_health"] = ml_result.get("gait_health")
         report["anomaly_score"] = ml_result.get("anomaly_score")
 
         params = ml_result.get("params", {})
-
         report["max_gyr_ms"] = params.get("max_gyr_ms")
         report["val_gyr_hs"] = params.get("val_gyr_hs")
         report["swing_time"] = params.get("swing_time")
@@ -121,7 +119,6 @@ def create_window_report_json(ml_result, patient_id, current_time: datetime):
         report["n_strides"] = params.get("n_strides")
 
         metrics = ml_result.get("metrics", {})
-
         report["steps"] = int(metrics.get("steps", 0))
         report["calories"] = float(metrics.get("calories", 0.0))
         report["distance_m"] = float(metrics.get("distance_m", 0.0))
@@ -150,7 +147,7 @@ def _get_patient_profile_sync(patient_id):
                 return {"weight": patient.weight, "height": patient.height}
         except Exception as e:
             log.error(f"Failed to fetch patient profile for {patient_id}: {e}")
-    return {"weight": 70.0, "height": 175.0}  # Fallback defaults
+    return {"weight": 70.0, "height": 175.0}
 
 
 async def get_patient_profile(patient_id):
@@ -194,18 +191,15 @@ def _cleanup_inactive_patients(active_systems, active_buffers, active_last_seen,
 
 async def run_worker():
     loop = asyncio.get_running_loop()
-    # SIGINT = signal interrupt(from Ctrl + C),
-    for sig in (signal.SIGINT, signal.SIGTERM):  # SIGTERM = signal terminate(from docker stop or else)
-        # if we get SIGINT or SINGTERM
-        loop.add_signal_handler(sig, _signal_handler)  # dont just kill worker run func _signal_handler first
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, _signal_handler)
 
-    # Kafka Consumer Config
     consumer = AIOKafkaConsumer(
         KAFKA_TOPIC,
         bootstrap_servers=KAFKA_BROKER_URL,
         value_deserializer=lambda m: json.loads(m.decode("utf-8")),
         group_id=KAFKA_GROUP_ID,
-        auto_offset_reset="earliest",  # if worker terminated, process old data on new worker first
+        auto_offset_reset="earliest",
     )
 
     await consumer.start()
@@ -229,7 +223,6 @@ async def run_worker():
                         log.info("Evicted %s inactive patient state entries", evicted)
                     last_cleanup_ts = now_ts
 
-                # 1. Extract patient_id first
                 patient_id = None
 
                 if msg.key:
@@ -268,7 +261,6 @@ async def run_worker():
                     active_last_seen[cmd_patient_id] = now_ts
                     continue
 
-                # Prepare System and Buffer for the patient
                 if patient_id not in active_systems:
                     profile = await get_patient_profile(patient_id)
                     active_systems[patient_id] = GaitSystem(
@@ -276,11 +268,9 @@ async def run_worker():
                     )
                     active_buffers[patient_id] = []
 
-                # Retrieve the instance for this patient to work on
                 system = active_systems[patient_id]
                 buffer = active_buffers[patient_id]
 
-                # Retrieve gait data (Data Ingestion)
                 samples = []
                 if isinstance(payload, dict):
                     raw = payload.get("gyro_z")
@@ -309,30 +299,50 @@ async def run_worker():
                 if valid_count == 0:
                     continue
 
-                # Process in chunks of 100
                 while len(buffer) >= 100:
                     chunk = buffer[:100]
-                    # Remove old chunk
                     active_buffers[patient_id] = buffer[100:]
                     buffer = active_buffers[patient_id]
 
+                    t0_ml = time.perf_counter()
                     result = await asyncio.to_thread(system.process_stream_chunk, chunk)
+                    ml_proc_ms = (time.perf_counter() - t0_ml) * 1000
 
                     if result:
-                        log.info(f"[Patient {patient_id}] ML Report: {result.get('type')}")
+                        now_bkk_str = datetime.now(BKK_TZ).strftime("%H:%M:%S.%f")[:-3]
+                        res_type = result.get("type")
+
+                        if res_type == "info":
+                            log.info(f"[{now_bkk_str}] 🛡️ [REJECTED] {result.get('msg')} | ML Time: {ml_proc_ms:.2f}ms")
+                            continue
+
                         current_timestamp = datetime.now(UTC)
-
                         window_report_data = create_window_report_json(result, patient_id, current_timestamp)
+                        status_label = window_report_data["status"]
 
-                        # Save to DB only when status is MONITORING
-                        if window_report_data["status"] == "MONITORING":
-                            anomaly_log_data = None
+                        if status_label == "CALIBRATING":
+                            progress = result.get("progress", "Waiting")
+                            log.info(
+                                f"[{now_bkk_str}] ⚙️ [CALIBRATION] Progress: {progress} | ML Time: {ml_proc_ms:.2f}ms"
+                            )
+                            continue
 
-                            if window_report_data.get("gait_health") == "ANOMALY_DETECTED":
-                                anomaly_log_data = create_anomaly_log_json(result, patient_id)  # create log
-                                log.info("Anomaly detected saving to anomaly log")
+                        elif status_label == "MONITORING":
+                            gait_health = window_report_data.get("gait_health")
+                            msg_score = f"Score: {window_report_data.get('anomaly_score', 0):.2f}"
+
+                            if gait_health == "NORMAL":
+                                log.info(f"[{now_bkk_str}] ✅ [NORMAL WALK] {msg_score} | ML Time: {ml_proc_ms:.2f}ms")
+                            else:
+                                anomaly_log_data = create_anomaly_log_json(result, patient_id)
+                                root_cause = anomaly_log_data["root_cause_feature"]
+                                log.warning(
+                                    f"[{now_bkk_str}] 🚨 [ANOMALY DETECTED] {msg_score} | "
+                                    f"Cause: {root_cause} | ML Time: {ml_proc_ms:.2f}ms"
+                                )
+
+                                log.info("Anomaly detected! Sending alert email...")
                                 patient_email = await get_patient_email(patient_id)
-                                # send email
                                 try:
                                     email_task = asyncio.create_task(
                                         send_anomaly_alert_email(
@@ -346,22 +356,25 @@ async def run_worker():
                                             timestamp=current_timestamp,
                                         )
                                     )
-
-                                    def _log_email_task_result(task: asyncio.Task, pid=patient_id) -> None:
-                                        try:
-                                            task.result()
-                                        except Exception as e:
-                                            log.error(f"[Patient {pid}] Failed to send anomaly alert email: {e}")
-
-                                    email_task.add_done_callback(_log_email_task_result)
+                                    email_task.add_done_callback(
+                                        lambda t, pid=patient_id: (
+                                            t.exception()
+                                            and log.error(f"[Patient {pid}] Failed to send email: {t.exception()}")
+                                        )
+                                    )
                                 except Exception as e:
                                     log.error(f"[Patient {patient_id}] Failed to schedule anomaly alert email: {e}")
 
-                            await asyncio.to_thread(save_to_database, window_report_data, anomaly_log_data)
+                            t0_db = time.perf_counter()
+                            await asyncio.to_thread(
+                                save_to_database,
+                                window_report_data,
+                                anomaly_log_data if gait_health == "ANOMALY_DETECTED" else None,
+                            )
+                            db_save_ms = (time.perf_counter() - t0_db) * 1000
+                            e2e_latency_ms = ml_proc_ms + db_save_ms
 
-                        else:
-                            # Skip saving if in CALIBRATING phase
-                            log.info(f"[Patient {patient_id}] Calibrating phase... Skipping DB save")
+                            log.info(f"   ↳ 💾 DB Save: {db_save_ms:.2f}ms | Total E2E Latency: {e2e_latency_ms:.2f}ms")
 
             except TimeoutError:
                 now_ts = time.monotonic()
@@ -374,7 +387,7 @@ async def run_worker():
 
             except Exception as e:
                 log.error(f"Error processing chunk for patient {patient_id}: {e}", exc_info=True)
-                continue  # Skip bad chunk and keep listening
+                continue
 
     except Exception as e:
         log.error(f"Worker crashed: {e}")
