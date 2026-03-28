@@ -1,10 +1,11 @@
+import asyncio
+
 from sqlalchemy import desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.models.orm import DailyAverage, MonthlyAverage, Patient, WeeklyAverage, YearlyAverage
 from app.schemas.reports import SingleMetricBenchmarkSchema, SingleMetricPeriod
-import asyncio
 
 AGE_BAND = 5
 
