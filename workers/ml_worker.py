@@ -1,5 +1,5 @@
 import asyncio
-from datetime import UTC, datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 import json
 import logging
 import os
@@ -322,7 +322,9 @@ async def run_worker():
 
                         if status_label == "CALIBRATING":
                             progress = result.get("progress", "Waiting")
-                            log.info(f"[{now_bkk_str}] ⚙️ [CALIBRATION] Progress: {progress} | ML Time: {ml_proc_ms:.2f}ms")
+                            log.info(
+                                f"[{now_bkk_str}] ⚙️ [CALIBRATION] Progress: {progress} | ML Time: {ml_proc_ms:.2f}ms"
+                            )
                             continue
 
                         elif status_label == "MONITORING":
@@ -334,7 +336,10 @@ async def run_worker():
                             else:
                                 anomaly_log_data = create_anomaly_log_json(result, patient_id)
                                 root_cause = anomaly_log_data["root_cause_feature"]
-                                log.warning(f"[{now_bkk_str}] 🚨 [ANOMALY DETECTED] {msg_score} | Cause: {root_cause} | ML Time: {ml_proc_ms:.2f}ms")
+                                log.warning(
+                                    f"[{now_bkk_str}] 🚨 [ANOMALY DETECTED] {msg_score} | "
+                                    f"Cause: {root_cause} | ML Time: {ml_proc_ms:.2f}ms"
+                                )
 
                                 log.info("Anomaly detected! Sending alert email...")
                                 patient_email = await get_patient_email(patient_id)
@@ -351,12 +356,21 @@ async def run_worker():
                                             timestamp=current_timestamp,
                                         )
                                     )
-                                    email_task.add_done_callback(lambda t, pid=patient_id: t.exception() and log.error(f"[Patient {pid}] Failed to send email: {t.exception()}"))
+                                    email_task.add_done_callback(
+                                        lambda t, pid=patient_id: (
+                                            t.exception()
+                                            and log.error(f"[Patient {pid}] Failed to send email: {t.exception()}")
+                                        )
+                                    )
                                 except Exception as e:
                                     log.error(f"[Patient {patient_id}] Failed to schedule anomaly alert email: {e}")
 
                             t0_db = time.perf_counter()
-                            await asyncio.to_thread(save_to_database, window_report_data, anomaly_log_data if gait_health == "ANOMALY_DETECTED" else None)
+                            await asyncio.to_thread(
+                                save_to_database,
+                                window_report_data,
+                                anomaly_log_data if gait_health == "ANOMALY_DETECTED" else None,
+                            )
                             db_save_ms = (time.perf_counter() - t0_db) * 1000
                             e2e_latency_ms = ml_proc_ms + db_save_ms
 

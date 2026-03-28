@@ -80,33 +80,39 @@ async def compute_benchmark(
         r = await db.execute(
             select(getattr(model, metric)).join(
                 subq,
-                (model.patient_id == subq.c.patient_id)
-                & (getattr(model, order_col) == subq.c.max_period),
+                (model.patient_id == subq.c.patient_id) & (getattr(model, order_col) == subq.c.max_period),
             )
         )
         return [row[0] for row in r.fetchall() if row[0] is not None]
 
     import asyncio
+
     (
-        p_daily, p_weekly, p_monthly, p_yearly,
-        c_daily, c_weekly, c_monthly, c_yearly,
+        p_daily,
+        p_weekly,
+        p_monthly,
+        p_yearly,
+        c_daily,
+        c_weekly,
+        c_monthly,
+        c_yearly,
     ) = await asyncio.gather(
-        patient_latest(DailyAverage,   "report_date"),
-        patient_latest(WeeklyAverage,  "report_week"),
+        patient_latest(DailyAverage, "report_date"),
+        patient_latest(WeeklyAverage, "report_week"),
         patient_latest(MonthlyAverage, "report_month"),
-        patient_latest(YearlyAverage,  "report_year"),
-        cohort_vals(DailyAverage,      "report_date"),
-        cohort_vals(WeeklyAverage,     "report_week"),
-        cohort_vals(MonthlyAverage,    "report_month"),
-        cohort_vals(YearlyAverage,     "report_year"),
+        patient_latest(YearlyAverage, "report_year"),
+        cohort_vals(DailyAverage, "report_date"),
+        cohort_vals(WeeklyAverage, "report_week"),
+        cohort_vals(MonthlyAverage, "report_month"),
+        cohort_vals(YearlyAverage, "report_year"),
     )
 
     return SingleMetricBenchmarkSchema(
         metric=metric,
         patient_age=patient.age,
         cohort_age_range=f"{age_min}–{age_max}",
-        daily=_make_metric(p_daily,    c_daily),
-        weekly=_make_metric(p_weekly,   c_weekly),
+        daily=_make_metric(p_daily, c_daily),
+        weekly=_make_metric(p_weekly, c_weekly),
         monthly=_make_metric(p_monthly, c_monthly),
-        yearly=_make_metric(p_yearly,   c_yearly),
+        yearly=_make_metric(p_yearly, c_yearly),
     )

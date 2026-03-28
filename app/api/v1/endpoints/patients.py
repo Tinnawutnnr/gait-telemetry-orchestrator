@@ -1,10 +1,12 @@
 import asyncio
 from datetime import date, timedelta
 from typing import Literal
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
-from sqlalchemy import desc, select, func
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.benchmark import compute_benchmark
 from app.core.database import get_db
 from app.core.dependencies import get_current_patient_profile, get_report_pair
 from app.models.orm import (
@@ -22,13 +24,11 @@ from app.schemas.reports import (
     DailyAverageSchema,
     FallAnalysisResponseSchema,
     MonthlyAverageSchema,
+    SingleMetricBenchmarkSchema,
     WeeklyAverageSchema,
     YearlyAverageSchema,
-    SingleMetricBenchmarkSchema,
 )
 from workers.batch_aggregator import calculate_averages_for_date
-from app.core.benchmark import compute_benchmark
-
 
 router = APIRouter(prefix="/patients", tags=["patients"])
 

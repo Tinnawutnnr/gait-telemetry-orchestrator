@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Generic, TypeVar, Literal
+from typing import Generic, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict
 
@@ -72,12 +72,14 @@ class FallAnalysisResponseSchema(BaseModel):
     month: ComparisonReportSchema[MonthlyAverageSchema]
     year: ComparisonReportSchema[YearlyAverageSchema]
 
+
 class SingleMetricPeriod(BaseModel):
     patient_value: float | None
     cohort_avg: float | None
     cohort_size: int
     percentile: float | None
     label: Literal["above_peers", "with_peers", "below_peers"] | None
+
 
 class SingleMetricBenchmarkSchema(BaseModel):
     metric: str
