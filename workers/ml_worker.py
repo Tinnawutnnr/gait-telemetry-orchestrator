@@ -1,5 +1,4 @@
 import asyncio
-import csv
 from datetime import UTC, datetime, timezone, timedelta
 import json
 import logging
@@ -17,27 +16,6 @@ from app.services.email import send_anomaly_alert_email
 from workers.realtime_processor import GaitSystem
 
 BKK_TZ = timezone(timedelta(hours=7))
-TEST_CSV_FILE = "gait_test_metrics.csv"
-
-if not os.path.exists(TEST_CSV_FILE):
-    with open(TEST_CSV_FILE, mode='w', newline='', encoding='utf-8') as f:
-        writer = csv.writer(f)
-        writer.writerow([
-            "Timestamp_GMT7", "Patient_ID", "Event_Type", "Status", 
-            "Message_or_Score", "Root_Cause_Feature", 
-            "ML_Processing_ms", "DB_Save_ms", "E2E_Latency_ms"
-        ])
-
-
-def log_to_csv(patient_id, event_type, status, msg_or_score, root_cause, ml_ms, db_ms, e2e_ms):
-    now_bkk = datetime.now(BKK_TZ).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-    with open(TEST_CSV_FILE, mode='a', newline='', encoding='utf-8') as f:
-        writer = csv.writer(f)
-        writer.writerow([
-            now_bkk, patient_id, event_type, status, 
-            msg_or_score, root_cause, 
-            f"{ml_ms:.2f}", f"{db_ms:.2f}", f"{e2e_ms:.2f}"
-        ])
 
 # DB connection
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -103,7 +81,6 @@ def save_to_database(report_dict, anomaly_dict=None):
 
 
 def create_window_report_json(ml_result, patient_id, current_time: datetime):
-    # WindowReport
     report = {
         "window_report_id": str(uuid.uuid4()),
         "patient_id": patient_id,
@@ -123,19 +100,16 @@ def create_window_report_json(ml_result, patient_id, current_time: datetime):
         "distance_m": None,
     }
 
-    # case 1 : calibrate case
     if ml_result.get("type") == "status":
         status = ml_result.get("status") or "CALIBRATING"
         report["status"] = status
 
-    # case2 : monitoring
     elif ml_result.get("type") == "analysis":
         report["status"] = "MONITORING"
         report["gait_health"] = ml_result.get("gait_health")
         report["anomaly_score"] = ml_result.get("anomaly_score")
 
         params = ml_result.get("params", {})
-
         report["max_gyr_ms"] = params.get("max_gyr_ms")
         report["val_gyr_hs"] = params.get("val_gyr_hs")
         report["swing_time"] = params.get("swing_time")
@@ -145,7 +119,6 @@ def create_window_report_json(ml_result, patient_id, current_time: datetime):
         report["n_strides"] = params.get("n_strides")
 
         metrics = ml_result.get("metrics", {})
-
         report["steps"] = int(metrics.get("steps", 0))
         report["calories"] = float(metrics.get("calories", 0.0))
         report["distance_m"] = float(metrics.get("distance_m", 0.0))
@@ -174,7 +147,7 @@ def _get_patient_profile_sync(patient_id):
                 return {"weight": patient.weight, "height": patient.height}
         except Exception as e:
             log.error(f"Failed to fetch patient profile for {patient_id}: {e}")
-    return {"weight": 70.0, "height": 175.0}  # Fallback defaults
+    return {"weight": 70.0, "height": 175.0}
 
 
 async def get_patient_profile(patient_id):
@@ -218,18 +191,15 @@ def _cleanup_inactive_patients(active_systems, active_buffers, active_last_seen,
 
 async def run_worker():
     loop = asyncio.get_running_loop()
-    # SIGINT = signal interrupt(from Ctrl + C),
-    for sig in (signal.SIGINT, signal.SIGTERM):  # SIGTERM = signal terminate(from docker stop or else)
-        # if we get SIGINT or SINGTERM
-        loop.add_signal_handler(sig, _signal_handler)  # dont just kill worker run func _signal_handler first
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, _signal_handler)
 
-    # Kafka Consumer Config
     consumer = AIOKafkaConsumer(
         KAFKA_TOPIC,
         bootstrap_servers=KAFKA_BROKER_URL,
         value_deserializer=lambda m: json.loads(m.decode("utf-8")),
         group_id=KAFKA_GROUP_ID,
-        auto_offset_reset="earliest",  # if worker terminated, process old data on new worker first
+        auto_offset_reset="earliest",
     )
 
     await consumer.start()
@@ -253,7 +223,6 @@ async def run_worker():
                         log.info("Evicted %s inactive patient state entries", evicted)
                     last_cleanup_ts = now_ts
 
-                # 1. Extract patient_id first
                 patient_id = None
 
                 if msg.key:
@@ -292,7 +261,6 @@ async def run_worker():
                     active_last_seen[cmd_patient_id] = now_ts
                     continue
 
-                # Prepare System and Buffer for the patient
                 if patient_id not in active_systems:
                     profile = await get_patient_profile(patient_id)
                     active_systems[patient_id] = GaitSystem(
@@ -300,11 +268,9 @@ async def run_worker():
                     )
                     active_buffers[patient_id] = []
 
-                # Retrieve the instance for this patient to work on
                 system = active_systems[patient_id]
                 buffer = active_buffers[patient_id]
 
-                # Retrieve gait data (Data Ingestion)
                 samples = []
                 if isinstance(payload, dict):
                     raw = payload.get("gyro_z")
@@ -333,10 +299,8 @@ async def run_worker():
                 if valid_count == 0:
                     continue
 
-                # Process in chunks of 100
                 while len(buffer) >= 100:
                     chunk = buffer[:100]
-                    # Remove old chunk
                     active_buffers[patient_id] = buffer[100:]
                     buffer = active_buffers[patient_id]
 
@@ -347,46 +311,31 @@ async def run_worker():
                     if result:
                         now_bkk_str = datetime.now(BKK_TZ).strftime("%H:%M:%S.%f")[:-3]
                         res_type = result.get("type")
-                        #scenario 3: noise/ non-walking rejection
+
                         if res_type == "info":
                             log.info(f"[{now_bkk_str}] 🛡️ [REJECTED] {result.get('msg')} | ML Time: {ml_proc_ms:.2f}ms")
-                            log_to_csv(patient_id, "INFO", "REJECTED", result.get('msg'), "-", ml_proc_ms, 0, ml_proc_ms)
                             continue
 
-                        #log.info(f"[Patient {patient_id}] ML Report: {result.get('type')}")
                         current_timestamp = datetime.now(UTC)
                         window_report_data = create_window_report_json(result, patient_id, current_timestamp)
-
-                        event_label = ""
                         status_label = window_report_data["status"]
-                        msg_score = ""
-                        root_cause = "-"
-                        db_save_ms = 0.0 
-                        e2e_latency_ms = ml_proc_ms #if not go in db, time = ml
 
-                        #scenario 1: Calibration(normal walking)
                         if status_label == "CALIBRATING":
                             progress = result.get("progress", "Waiting")
-                            event_label = "⚙️ [CALIBRATION]"
-                            msg_score = progress
-                            log.info(f"[{now_bkk_str}] {event_label} Progress: {progress} | ML Time: {ml_proc_ms:.2f}ms")
-                            log_to_csv(patient_id, res_type.upper(), status_label, msg_score, root_cause, ml_proc_ms, 0, ml_proc_ms)
+                            log.info(f"[{now_bkk_str}] ⚙️ [CALIBRATION] Progress: {progress} | ML Time: {ml_proc_ms:.2f}ms")
                             continue
 
-                        #SCENARIO 2 & 4: Monitoring (Normal / Anomaly)
                         elif status_label == "MONITORING":
                             gait_health = window_report_data.get("gait_health")
                             msg_score = f"Score: {window_report_data.get('anomaly_score', 0):.2f}"
-                            
+
                             if gait_health == "NORMAL":
-                                event_label = "✅ [NORMAL WALK]"
-                                log.info(f"[{now_bkk_str}] {event_label} {msg_score} | ML Time: {ml_proc_ms:.2f}ms")
+                                log.info(f"[{now_bkk_str}] ✅ [NORMAL WALK] {msg_score} | ML Time: {ml_proc_ms:.2f}ms")
                             else:
                                 anomaly_log_data = create_anomaly_log_json(result, patient_id)
                                 root_cause = anomaly_log_data["root_cause_feature"]
-                                event_label = "🚨 [ANOMALY DETECTED]"
-                                log.warning(f"[{now_bkk_str}] {event_label} {msg_score} | Cause: {root_cause} | ML Time: {ml_proc_ms:.2f}ms")
-                                
+                                log.warning(f"[{now_bkk_str}] 🚨 [ANOMALY DETECTED] {msg_score} | Cause: {root_cause} | ML Time: {ml_proc_ms:.2f}ms")
+
                                 log.info("Anomaly detected! Sending alert email...")
                                 patient_email = await get_patient_email(patient_id)
                                 try:
@@ -406,16 +355,12 @@ async def run_worker():
                                 except Exception as e:
                                     log.error(f"[Patient {patient_id}] Failed to schedule anomaly alert email: {e}")
 
-                            # record database persistence only when monitoring
                             t0_db = time.perf_counter()
                             await asyncio.to_thread(save_to_database, window_report_data, anomaly_log_data if gait_health == "ANOMALY_DETECTED" else None)
                             db_save_ms = (time.perf_counter() - t0_db) * 1000
                             e2e_latency_ms = ml_proc_ms + db_save_ms
 
                             log.info(f"   ↳ 💾 DB Save: {db_save_ms:.2f}ms | Total E2E Latency: {e2e_latency_ms:.2f}ms")
-                            
-                            # csv save
-                            log_to_csv(patient_id, res_type.upper(), status_label, msg_score, root_cause, ml_proc_ms, db_save_ms, e2e_latency_ms)
 
             except TimeoutError:
                 now_ts = time.monotonic()
@@ -428,7 +373,7 @@ async def run_worker():
 
             except Exception as e:
                 log.error(f"Error processing chunk for patient {patient_id}: {e}", exc_info=True)
-                continue  # Skip bad chunk and keep listening
+                continue
 
     except Exception as e:
         log.error(f"Worker crashed: {e}")

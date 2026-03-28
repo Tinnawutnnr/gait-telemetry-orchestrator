@@ -1,6 +1,6 @@
 import asyncio
 from datetime import date, timedelta
-
+from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,7 +30,10 @@ from app.schemas.reports import (
     MonthlyAverageSchema,
     WeeklyAverageSchema,
     YearlyAverageSchema,
+    SingleMetricBenchmarkSchema,
 )
+
+from app.core.benchmark import compute_benchmark
 
 router = APIRouter(prefix="/caretakers/patients", tags=["caretaker-patients"])
 
@@ -197,3 +200,20 @@ async def get_patient_fall_analysis(
         "month": month_pair,
         "year": year_pair,
     }
+
+
+@router.get("/benchmark/{username}", response_model=SingleMetricBenchmarkSchema)
+async def get_patient_benchmark_caretaker(
+    metric: Literal[
+        "avg_max_gyr_ms",
+        "avg_val_gyr_hs",
+        "avg_swing_time",
+        "avg_stance_time",
+        "avg_stride_cv",
+    ] = Query(...),
+    patient: Patient = Depends(get_authorized_patient_for_caretaker),
+    db: AsyncSession = Depends(get_db),
+):
+    if patient.age is None:
+        raise HTTPException(status_code=400, detail="Patient age not set.")
+    return await compute_benchmark(patient, metric, db)
