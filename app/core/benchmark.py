@@ -4,6 +4,7 @@ from sqlalchemy.future import select
 
 from app.models.orm import DailyAverage, MonthlyAverage, Patient, WeeklyAverage, YearlyAverage
 from app.schemas.reports import SingleMetricBenchmarkSchema, SingleMetricPeriod
+import asyncio
 
 AGE_BAND = 5
 
@@ -84,8 +85,6 @@ async def compute_benchmark(
             )
         )
         return [row[0] for row in r.fetchall() if row[0] is not None]
-
-    import asyncio
 
     (
         p_daily,
