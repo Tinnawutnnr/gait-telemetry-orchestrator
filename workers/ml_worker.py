@@ -1,11 +1,12 @@
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 import json
 import logging
 import os
 import signal
 import time
 import uuid
+import csv
 
 from aiokafka import AIOKafkaConsumer
 from sqlalchemy import create_engine, select
