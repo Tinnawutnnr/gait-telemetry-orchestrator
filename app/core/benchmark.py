@@ -1,4 +1,5 @@
 import asyncio
+import statistics
 
 from sqlalchemy import desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,28 +18,57 @@ def _percentile(patient_val: float | None, cohort_vals: list[float]) -> float | 
     return round((below / len(cohort_vals)) * 100, 1)
 
 
-def _label(percentile: float | None) -> str | None:
-    if percentile is None:
-        return None
-    if percentile > 75:
-        return "above_peers"
-    if percentile < 25:
-        return "below_peers"
-    return "with_peers"
-
-
 def _make_metric(
     patient_val: float | None,
     cohort_vals: list[float],
 ) -> SingleMetricPeriod:
-    cohort_avg = round(sum(cohort_vals) / len(cohort_vals), 4) if cohort_vals else None
+
+    # Handle when no peers in cohort
+    if not cohort_vals:
+        return SingleMetricPeriod(
+            patient_value=patient_val,
+            cohort_avg=None,
+            cohort_size=0,
+            percentile=None,
+            lower_bound=None,
+            upper_bound=None,
+            label=None,
+        )
+
+    # Calculate Average
+    cohort_avg = sum(cohort_vals) / len(cohort_vals)
+
+    # Calculate Standard Deviation if only 1 peer sd 0
+    if len(cohort_vals) > 1:
+        sd = statistics.stdev(cohort_vals)
+    else:
+        sd = 0.0
+
+    # Create Bounds (Mean ± 1 SD)
+    lower_bound = cohort_avg - sd
+    upper_bound = cohort_avg + sd
+
+    # 4. Determine Label based on actual values crossing the bounds
+    label = None
+    if patient_val is not None:
+        if patient_val > upper_bound:
+            label = "above_peers"
+        elif patient_val < lower_bound:
+            label = "below_peers"
+        else:
+            label = "with_peers"
+
+    # 5. Keep percentile for the UI
     pct = _percentile(patient_val, cohort_vals)
+
     return SingleMetricPeriod(
         patient_value=patient_val,
-        cohort_avg=cohort_avg,
+        cohort_avg=round(cohort_avg, 4),
         cohort_size=len(cohort_vals),
         percentile=pct,
-        label=_label(pct),
+        lower_bound=round(lower_bound, 4),
+        upper_bound=round(upper_bound, 4),
+        label=label,
     )
 
 

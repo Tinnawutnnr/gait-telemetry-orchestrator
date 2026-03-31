@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Generic, Literal, TypeVar
+from typing import Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict
 
@@ -78,14 +78,16 @@ class SingleMetricPeriod(BaseModel):
     cohort_avg: float | None
     cohort_size: int
     percentile: float | None
-    label: Literal["above_peers", "with_peers", "below_peers"] | None
+    lower_bound: float | None = None
+    upper_bound: float | None = None
+    label: str | None
 
 
 class SingleMetricBenchmarkSchema(BaseModel):
     metric: str
-    patient_age: int | None
-    cohort_age_range: str | None
-    daily: SingleMetricPeriod | None
-    weekly: SingleMetricPeriod | None
-    monthly: SingleMetricPeriod | None
-    yearly: SingleMetricPeriod | None
+    patient_age: int
+    cohort_age_range: str
+    daily: SingleMetricPeriod
+    weekly: SingleMetricPeriod
+    monthly: SingleMetricPeriod
+    yearly: SingleMetricPeriod
