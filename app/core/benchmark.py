@@ -10,17 +10,19 @@ from app.schemas.reports import SingleMetricBenchmarkSchema, SingleMetricPeriod
 
 AGE_BAND = 5
 
+
 def _percentile(patient_val: float | None, cohort_vals: list[float]) -> float | None:
     if patient_val is None or not cohort_vals:
         return None
     below = sum(1 for v in cohort_vals if v < patient_val)
     return round((below / len(cohort_vals)) * 100, 1)
 
+
 def _make_metric(
     patient_val: float | None,
     cohort_vals: list[float],
 ) -> SingleMetricPeriod:
-    
+
     # Handle when no peers in cohort
     if not cohort_vals:
         return SingleMetricPeriod(
@@ -35,7 +37,7 @@ def _make_metric(
 
     # Calculate Average
     cohort_avg = sum(cohort_vals) / len(cohort_vals)
-    
+
     # Calculate Standard Deviation if only 1 peer sd 0
     if len(cohort_vals) > 1:
         sd = statistics.stdev(cohort_vals)
@@ -64,10 +66,11 @@ def _make_metric(
         cohort_avg=round(cohort_avg, 4),
         cohort_size=len(cohort_vals),
         percentile=pct,
-        lower_bound=round(lower_bound, 4), 
-        upper_bound=round(upper_bound, 4),  
+        lower_bound=round(lower_bound, 4),
+        upper_bound=round(upper_bound, 4),
         label=label,
     )
+
 
 async def compute_benchmark(
     patient: Patient,
