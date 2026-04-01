@@ -201,7 +201,7 @@ class GaitSystem:
                 valid_ms.append(ms)
                 valid_hs.append(future_hs[0])
 
-        if len(valid_hs) < 3:
+        if len(valid_hs) < 5:
             return None  # Too few steps (Noise/Stopped walking)
 
         ms_peaks = np.array(valid_ms)
@@ -245,7 +245,7 @@ class GaitSystem:
                             stride_times.append(stride_t)
 
         # If no data left after filtering
-        if len(stride_times) < 2:
+        if len(stride_times) < 4:
             return None
 
         # 4. Final Aggregation
