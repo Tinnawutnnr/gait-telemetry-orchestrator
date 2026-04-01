@@ -19,6 +19,8 @@ class BaseAverageSchema(BaseModel):
     avg_stance_time: float | None
     avg_stride_cv: float | None
 
+    avg_cadence: float | None = None 
+
     anomaly_count: int | None
 
 
@@ -82,12 +84,7 @@ class SingleMetricPeriod(BaseModel):
     upper_bound: float | None = None
     label: str | None
 
-
-class SingleMetricBenchmarkSchema(BaseModel):
-    metric: str
+class AllMetricsBenchmarkSchema(BaseModel):
     patient_age: int
     cohort_age_range: str
-    daily: SingleMetricPeriod
-    weekly: SingleMetricPeriod
-    monthly: SingleMetricPeriod
-    yearly: SingleMetricPeriod
+    metrics: dict[str, SingleMetricPeriod]

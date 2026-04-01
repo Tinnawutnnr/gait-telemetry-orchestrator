@@ -13,7 +13,6 @@ log = logging.getLogger(__name__)
 # Set to 0 to deletes yesterday's data
 RETENTION_DAYS = 0
 
-
 _engine = None
 _SessionLocal = None
 
@@ -59,7 +58,8 @@ def calculate_averages_for_date(target_date: date, patient_id: int | None = None
             if not has_data:
                 log.info(f"No walking data found for {target_date} (Patient: {patient_id}). Skipping aggregation.")
                 return
-            # dailyAverage
+
+            # DAILY AVERAGE
             daily_conditions = [
                 WindowReport.timestamp >= target_date,
                 WindowReport.timestamp < next_day,
@@ -88,6 +88,13 @@ def calculate_averages_for_date(target_date: date, patient_id: int | None = None
 
             results_daily = db.execute(stmt_daily).all()
             for row in results_daily:
+                # Calculate Cadence dynamically
+                calculated_cadence = 0.0
+                if row.total_steps and row.total_windows:
+                    total_minutes = row.total_windows * 0.5
+                    if total_minutes > 0:
+                        calculated_cadence = row.total_steps / total_minutes
+
                 existing_daily = (
                     db.query(DailyAverage).filter_by(patient_id=row.patient_id, report_date=target_date).first()
                 )
@@ -103,6 +110,7 @@ def calculate_averages_for_date(target_date: date, patient_id: int | None = None
                     existing_daily.avg_stance_time = row.avg_stance_time
                     existing_daily.avg_stride_cv = row.avg_stride_cv
                     existing_daily.anomaly_count = row.anomaly_count or 0
+                    existing_daily.avg_cadence = calculated_cadence
                 else:
                     daily_record = DailyAverage(
                         daily_report_id=f"daily_{row.patient_id}_{target_date_str}",
@@ -118,13 +126,14 @@ def calculate_averages_for_date(target_date: date, patient_id: int | None = None
                         avg_stance_time=row.avg_stance_time,
                         avg_stride_cv=row.avg_stride_cv,
                         anomaly_count=row.anomaly_count or 0,
+                        avg_cadence=calculated_cadence,
                     )
                     db.add(daily_record)
 
             db.commit()
             log.info(f"Daily Average saved ({len(results_daily)} records)")
 
-            # weeklyAverage
+            # WEEKLY AVERAGE
             weekly_conditions = [DailyAverage.report_date >= start_of_week, DailyAverage.report_date <= end_of_week]
             if patient_id is not None:
                 weekly_conditions.append(DailyAverage.patient_id == patient_id)
@@ -149,6 +158,12 @@ def calculate_averages_for_date(target_date: date, patient_id: int | None = None
 
             results_weekly = db.execute(stmt_weekly).all()
             for row in results_weekly:
+                calculated_cadence = 0.0
+                if row.total_steps and row.total_windows:
+                    total_minutes = row.total_windows * 0.5
+                    if total_minutes > 0:
+                        calculated_cadence = row.total_steps / total_minutes
+
                 existing_weekly = (
                     db.query(WeeklyAverage).filter_by(patient_id=row.patient_id, report_week=target_week_str).first()
                 )
@@ -164,6 +179,7 @@ def calculate_averages_for_date(target_date: date, patient_id: int | None = None
                     existing_weekly.avg_stance_time = row.avg_stance_time
                     existing_weekly.avg_stride_cv = row.avg_stride_cv
                     existing_weekly.anomaly_count = row.anomaly_count or 0
+                    existing_weekly.avg_cadence = calculated_cadence
                 else:
                     weekly_record = WeeklyAverage(
                         weekly_report_id=f"weekly_{row.patient_id}_{target_week_str}",
@@ -179,13 +195,13 @@ def calculate_averages_for_date(target_date: date, patient_id: int | None = None
                         avg_stance_time=row.avg_stance_time,
                         avg_stride_cv=row.avg_stride_cv,
                         anomaly_count=row.anomaly_count or 0,
+                        avg_cadence=calculated_cadence,
                     )
                     db.add(weekly_record)
             db.commit()
             log.info("Weekly Average saved")
 
             # MONTHLY AVERAGE
-
             monthly_conditions = [func.to_char(DailyAverage.report_date, "YYYY-MM") == target_month_str]
             if patient_id is not None:
                 monthly_conditions.append(DailyAverage.patient_id == patient_id)
@@ -210,6 +226,12 @@ def calculate_averages_for_date(target_date: date, patient_id: int | None = None
 
             results_monthly = db.execute(stmt_monthly).all()
             for row in results_monthly:
+                calculated_cadence = 0.0
+                if row.total_steps and row.total_windows:
+                    total_minutes = row.total_windows * 0.5
+                    if total_minutes > 0:
+                        calculated_cadence = row.total_steps / total_minutes
+
                 existing_monthly = (
                     db.query(MonthlyAverage).filter_by(patient_id=row.patient_id, report_month=target_month_str).first()
                 )
@@ -225,6 +247,7 @@ def calculate_averages_for_date(target_date: date, patient_id: int | None = None
                     existing_monthly.avg_stance_time = row.avg_stance_time
                     existing_monthly.avg_stride_cv = row.avg_stride_cv
                     existing_monthly.anomaly_count = row.anomaly_count or 0
+                    existing_monthly.avg_cadence = calculated_cadence
                 else:
                     monthly_record = MonthlyAverage(
                         monthly_report_id=f"monthly_{row.patient_id}_{target_month_str}",
@@ -240,12 +263,13 @@ def calculate_averages_for_date(target_date: date, patient_id: int | None = None
                         avg_stance_time=row.avg_stance_time,
                         avg_stride_cv=row.avg_stride_cv,
                         anomaly_count=row.anomaly_count or 0,
+                        avg_cadence=calculated_cadence,
                     )
                     db.add(monthly_record)
             db.commit()
             log.info("Monthly Average saved")
 
-            # YEARLY AVERAGE
+            #  YEARLY AVERAGE
             yearly_conditions = [extract("year", DailyAverage.report_date) == target_year_int]
             if patient_id is not None:
                 yearly_conditions.append(DailyAverage.patient_id == patient_id)
@@ -270,6 +294,12 @@ def calculate_averages_for_date(target_date: date, patient_id: int | None = None
 
             results_yearly = db.execute(stmt_yearly).all()
             for row in results_yearly:
+                calculated_cadence = 0.0
+                if row.total_steps and row.total_windows:
+                    total_minutes = row.total_windows * 0.5
+                    if total_minutes > 0:
+                        calculated_cadence = row.total_steps / total_minutes
+
                 existing_yearly = (
                     db.query(YearlyAverage).filter_by(patient_id=row.patient_id, report_year=target_year_int).first()
                 )
@@ -285,6 +315,7 @@ def calculate_averages_for_date(target_date: date, patient_id: int | None = None
                     existing_yearly.avg_stance_time = row.avg_stance_time
                     existing_yearly.avg_stride_cv = row.avg_stride_cv
                     existing_yearly.anomaly_count = row.anomaly_count or 0
+                    existing_yearly.avg_cadence = calculated_cadence
                 else:
                     yearly_record = YearlyAverage(
                         yearly_report_id=f"yearly_{row.patient_id}_{target_year_int}",
@@ -300,6 +331,7 @@ def calculate_averages_for_date(target_date: date, patient_id: int | None = None
                         avg_stance_time=row.avg_stance_time,
                         avg_stride_cv=row.avg_stride_cv,
                         anomaly_count=row.anomaly_count or 0,
+                        avg_cadence=calculated_cadence,
                     )
                     db.add(yearly_record)
             db.commit()

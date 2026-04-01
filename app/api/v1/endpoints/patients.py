@@ -24,7 +24,7 @@ from app.schemas.reports import (
     DailyAverageSchema,
     FallAnalysisResponseSchema,
     MonthlyAverageSchema,
-    SingleMetricBenchmarkSchema,
+    AllMetricsBenchmarkSchema,
     WeeklyAverageSchema,
     YearlyAverageSchema,
 )
@@ -201,18 +201,12 @@ async def fall_analysis(
     }
 
 
-@router.get("/me/benchmark", response_model=SingleMetricBenchmarkSchema)
+@router.get("/me/benchmark", response_model=AllMetricsBenchmarkSchema)
 async def get_patient_benchmark(
-    metric: Literal[
-        "avg_max_gyr_ms",
-        "avg_val_gyr_hs",
-        "avg_swing_time",
-        "avg_stance_time",
-        "avg_stride_cv",
-    ] = Query(...),
     patient: Patient = Depends(get_current_patient_profile),
     db: AsyncSession = Depends(get_db),
 ):
     if patient.age is None:
         raise HTTPException(status_code=400, detail="Patient age not set.")
-    return await compute_benchmark(patient, metric, db)
+        
+    return await compute_benchmark(patient, db)

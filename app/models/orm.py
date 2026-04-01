@@ -16,8 +16,9 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import CITEXT
+from sqlalchemy.dialects.postgresql import CITEXT, ARRAY
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -169,6 +170,7 @@ class DailyAverage(Base):
     avg_swing_time: Mapped[float | None] = mapped_column(Float)
     avg_stance_time: Mapped[float | None] = mapped_column(Float)
     avg_stride_cv: Mapped[float | None] = mapped_column(Float)
+    avg_cadence: Mapped[float | None] = mapped_column(Float) 
 
     anomaly_count: Mapped[int | None] = mapped_column(Integer)
 
@@ -198,6 +200,7 @@ class WeeklyAverage(Base):
     avg_swing_time: Mapped[float | None] = mapped_column(Float)
     avg_stance_time: Mapped[float | None] = mapped_column(Float)
     avg_stride_cv: Mapped[float | None] = mapped_column(Float)
+    avg_cadence: Mapped[float | None] = mapped_column(Float)  
 
     anomaly_count: Mapped[int | None] = mapped_column(Integer)
 
@@ -226,6 +229,7 @@ class MonthlyAverage(Base):
     avg_swing_time: Mapped[float | None] = mapped_column(Float)
     avg_stance_time: Mapped[float | None] = mapped_column(Float)
     avg_stride_cv: Mapped[float | None] = mapped_column(Float)
+    avg_cadence: Mapped[float | None] = mapped_column(Float) 
 
     anomaly_count: Mapped[int | None] = mapped_column(Integer)
 
@@ -254,6 +258,7 @@ class YearlyAverage(Base):
     avg_swing_time: Mapped[float | None] = mapped_column(Float)
     avg_stance_time: Mapped[float | None] = mapped_column(Float)
     avg_stride_cv: Mapped[float | None] = mapped_column(Float)
+    avg_cadence: Mapped[float | None] = mapped_column(Float)  
 
     anomaly_count: Mapped[int | None] = mapped_column(Integer)
 
@@ -297,3 +302,23 @@ class AnomalyLog(Base):
 
     def __repr__(self) -> str:
         return f"<AnomalyLog id={self.anomaly_id!r} score={self.anomaly_score}>"
+    
+
+class CohortBenchmarkData(Base):
+    __tablename__ = "cohort_benchmark_data"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    age_center: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    metric: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    cohort_vals: Mapped[list[float]] = mapped_column(ARRAY(Float), server_default="{}")
+    
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("age_center", "metric", name="uq_cohort_benchmark"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<CohortBenchmarkData age={self.age_center} metric={self.metric!r}>"
