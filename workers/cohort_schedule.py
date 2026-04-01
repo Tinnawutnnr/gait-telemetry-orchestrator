@@ -1,12 +1,13 @@
 import asyncio
 import os
-from dotenv import load_dotenv
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy import select, func
-from sqlalchemy.dialects.postgresql import insert
 
-from app.models.orm import Patient, DailyAverage, CohortBenchmarkData
+from dotenv import load_dotenv
+from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
+
+from app.models.orm import CohortBenchmarkData, DailyAverage, Patient
 
 load_dotenv()
 
@@ -18,9 +19,15 @@ AGE_BAND = 5
 
 # Add avg_cadence directly to the METRICS list
 METRICS = [
-    "avg_max_gyr_ms", "avg_val_gyr_hs", "avg_swing_time", 
-    "avg_stance_time", "avg_stride_cv", "total_steps", "avg_cadence"
+    "avg_max_gyr_ms",
+    "avg_val_gyr_hs",
+    "avg_swing_time",
+    "avg_stance_time",
+    "avg_stride_cv",
+    "total_steps",
+    "avg_cadence",
 ]
+
 
 async def refresh_all_cohorts():
     print("Starting 2 AM Daily Cohort Aggregation...")
@@ -30,10 +37,8 @@ async def refresh_all_cohorts():
 
         for age in unique_ages:
             age_min, age_max = age - AGE_BAND, age + AGE_BAND
-            
-            cohort_result = await db.execute(
-                select(Patient.id).where(Patient.age.between(age_min, age_max))
-            )
+
+            cohort_result = await db.execute(select(Patient.id).where(Patient.age.between(age_min, age_max)))
             cohort_ids = [r[0] for r in cohort_result.fetchall()]
 
             if not cohort_ids:
@@ -46,7 +51,7 @@ async def refresh_all_cohorts():
                 .group_by(DailyAverage.patient_id)
                 .subquery()
             )
-            
+
             rows_result = await db.execute(
                 select(DailyAverage).join(
                     subq,
@@ -66,19 +71,16 @@ async def refresh_all_cohorts():
             # Upsert into database
             for metric_name, vals in extracted_data.items():
                 stmt = insert(CohortBenchmarkData).values(
-                    age_center=age,
-                    metric=metric_name,
-                    cohort_vals=vals,
-                    updated_at=func.now()
+                    age_center=age, metric=metric_name, cohort_vals=vals, updated_at=func.now()
                 )
                 stmt = stmt.on_conflict_do_update(
-                    index_elements=["age_center", "metric"],
-                    set_=dict(cohort_vals=vals, updated_at=func.now())
+                    index_elements=["age_center", "metric"], set_=dict(cohort_vals=vals, updated_at=func.now())
                 )
                 await db.execute(stmt)
 
         await db.commit()
     print(" 2 AM Aggregation Complete!")
+
 
 if __name__ == "__main__":
     asyncio.run(refresh_all_cohorts())

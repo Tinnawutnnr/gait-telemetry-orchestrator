@@ -19,7 +19,7 @@ class BaseAverageSchema(BaseModel):
     avg_stance_time: float | None
     avg_stride_cv: float | None
 
-    avg_cadence: float | None = None 
+    avg_cadence: float | None = None
 
     anomaly_count: int | None
 
@@ -83,6 +83,7 @@ class SingleMetricPeriod(BaseModel):
     lower_bound: float | None = None
     upper_bound: float | None = None
     label: str | None
+
 
 class AllMetricsBenchmarkSchema(BaseModel):
     patient_age: int

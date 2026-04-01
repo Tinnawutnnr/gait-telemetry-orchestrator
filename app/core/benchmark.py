@@ -97,12 +97,13 @@ async def compute_benchmark(
         "avg_cadence": getattr(patient_latest, "avg_cadence", None) if patient_latest else None,
     }
 
-    # Fetch PRE-CALCULATED cohort arrays for all metrics 
+    # Fetch PRE-CALCULATED cohort arrays for all metrics
     r_cohort = await db.execute(
-        select(CohortBenchmarkData.metric, CohortBenchmarkData.cohort_vals)
-        .where(CohortBenchmarkData.age_center == patient.age)
+        select(CohortBenchmarkData.metric, CohortBenchmarkData.cohort_vals).where(
+            CohortBenchmarkData.age_center == patient.age
+        )
     )
-    
+
     # Store it in a dictionary mapping metric_name -> list of float values
     cohort_data = {row.metric: row.cohort_vals for row in r_cohort.fetchall()}
 
@@ -113,7 +114,5 @@ async def compute_benchmark(
 
     # 5. Return the newly formatted schema
     return AllMetricsBenchmarkSchema(
-        patient_age=patient.age,
-        cohort_age_range=f"{age_min}–{age_max}",
-        metrics=metrics_result
+        patient_age=patient.age, cohort_age_range=f"{age_min}–{age_max}", metrics=metrics_result
     )

@@ -1,6 +1,5 @@
 import asyncio
 from datetime import date, timedelta
-from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import desc, select
@@ -20,11 +19,11 @@ from app.models.orm import (
 )
 from app.schemas.patients import PatientCaretakerStatus
 from app.schemas.reports import (
+    AllMetricsBenchmarkSchema,
     AnomalyLogSchema,
     DailyAverageSchema,
     FallAnalysisResponseSchema,
     MonthlyAverageSchema,
-    AllMetricsBenchmarkSchema,
     WeeklyAverageSchema,
     YearlyAverageSchema,
 )
@@ -208,5 +207,5 @@ async def get_patient_benchmark(
 ):
     if patient.age is None:
         raise HTTPException(status_code=400, detail="Patient age not set.")
-        
+
     return await compute_benchmark(patient, db)
