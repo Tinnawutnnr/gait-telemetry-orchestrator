@@ -1,12 +1,11 @@
-import asyncio
 import statistics
 
-from sqlalchemy import desc, func
+from sqlalchemy import desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from app.models.orm import DailyAverage, MonthlyAverage, Patient, WeeklyAverage, YearlyAverage
-from app.schemas.reports import SingleMetricBenchmarkSchema, SingleMetricPeriod
+from app.models.orm import CohortBenchmarkData, DailyAverage, Patient
+from app.schemas.reports import AllMetricsBenchmarkSchema, SingleMetricPeriod
 
 AGE_BAND = 5
 
@@ -23,7 +22,7 @@ def _make_metric(
     cohort_vals: list[float],
 ) -> SingleMetricPeriod:
 
-    # Handle when no peers in cohort
+    # Handle no peers in cohort
     if not cohort_vals:
         return SingleMetricPeriod(
             patient_value=patient_val,
@@ -38,7 +37,7 @@ def _make_metric(
     # Calculate Average
     cohort_avg = sum(cohort_vals) / len(cohort_vals)
 
-    # Calculate Standard Deviation if only 1 peer sd 0
+    # Calculate Standard Deviation
     if len(cohort_vals) > 1:
         sd = statistics.stdev(cohort_vals)
     else:
@@ -48,7 +47,7 @@ def _make_metric(
     lower_bound = cohort_avg - sd
     upper_bound = cohort_avg + sd
 
-    # 4. Determine Label based on actual values crossing the bounds
+    # Determine Label based on actual values crossing the bounds
     label = None
     if patient_val is not None:
         if patient_val > upper_bound:
@@ -58,11 +57,11 @@ def _make_metric(
         else:
             label = "with_peers"
 
-    # 5. Keep percentile for the UI
+    # Keep percentile for the UI
     pct = _percentile(patient_val, cohort_vals)
 
     return SingleMetricPeriod(
-        patient_value=patient_val,
+        patient_value=round(patient_val, 4) if patient_val is not None else None,
         cohort_avg=round(cohort_avg, 4),
         cohort_size=len(cohort_vals),
         percentile=pct,
@@ -74,75 +73,46 @@ def _make_metric(
 
 async def compute_benchmark(
     patient: Patient,
-    metric: str,
     db: AsyncSession,
-) -> SingleMetricBenchmarkSchema:
+) -> AllMetricsBenchmarkSchema:
     age_min, age_max = patient.age - AGE_BAND, patient.age + AGE_BAND
 
-    cohort_result = await db.execute(
-        select(Patient.id).where(
-            Patient.age.between(age_min, age_max),
-            Patient.id != patient.id,
+    # Fetch patient's latest DailyAverage
+    r_patient = await db.execute(
+        select(DailyAverage)
+        .where(DailyAverage.patient_id == patient.id)
+        .order_by(desc(DailyAverage.report_date))
+        .limit(1)
+    )
+    patient_latest = r_patient.scalars().first()
+
+    # Extract patient values directly from the database row
+    patient_vals = {
+        "avg_max_gyr_ms": getattr(patient_latest, "avg_max_gyr_ms", None) if patient_latest else None,
+        "avg_val_gyr_hs": getattr(patient_latest, "avg_val_gyr_hs", None) if patient_latest else None,
+        "avg_swing_time": getattr(patient_latest, "avg_swing_time", None) if patient_latest else None,
+        "avg_stance_time": getattr(patient_latest, "avg_stance_time", None) if patient_latest else None,
+        "avg_stride_cv": getattr(patient_latest, "avg_stride_cv", None) if patient_latest else None,
+        "total_steps": getattr(patient_latest, "total_steps", None) if patient_latest else None,
+        "avg_cadence": getattr(patient_latest, "avg_cadence", None) if patient_latest else None,
+    }
+
+    # Fetch PRE-CALCULATED cohort arrays for all metrics
+    r_cohort = await db.execute(
+        select(CohortBenchmarkData.metric, CohortBenchmarkData.cohort_vals).where(
+            CohortBenchmarkData.age_center == patient.age
         )
     )
-    cohort_ids = [r for (r,) in cohort_result.fetchall()]
 
-    async def patient_latest(model, order_col) -> float | None:
-        r = await db.execute(
-            select(getattr(model, metric))
-            .where(model.patient_id == patient.id)
-            .order_by(desc(getattr(model, order_col)))
-            .limit(1)
-        )
-        row = r.first()
-        return row[0] if row else None
+    # Store it in a dictionary mapping metric_name -> list of float values
+    cohort_data = {row.metric: row.cohort_vals for row in r_cohort.fetchall()}
 
-    async def cohort_vals(model, order_col) -> list[float]:
-        if not cohort_ids:
-            return []
-        subq = (
-            select(
-                model.patient_id,
-                func.max(getattr(model, order_col)).label("max_period"),
-            )
-            .where(model.patient_id.in_(cohort_ids))
-            .group_by(model.patient_id)
-            .subquery()
-        )
-        r = await db.execute(
-            select(getattr(model, metric)).join(
-                subq,
-                (model.patient_id == subq.c.patient_id) & (getattr(model, order_col) == subq.c.max_period),
-            )
-        )
-        return [row[0] for row in r.fetchall() if row[0] is not None]
+    metrics_result = {}
+    for metric_name, p_val in patient_vals.items():
+        c_vals = cohort_data.get(metric_name, [])
+        metrics_result[metric_name] = _make_metric(p_val, c_vals)
 
-    (
-        p_daily,
-        p_weekly,
-        p_monthly,
-        p_yearly,
-        c_daily,
-        c_weekly,
-        c_monthly,
-        c_yearly,
-    ) = await asyncio.gather(
-        patient_latest(DailyAverage, "report_date"),
-        patient_latest(WeeklyAverage, "report_week"),
-        patient_latest(MonthlyAverage, "report_month"),
-        patient_latest(YearlyAverage, "report_year"),
-        cohort_vals(DailyAverage, "report_date"),
-        cohort_vals(WeeklyAverage, "report_week"),
-        cohort_vals(MonthlyAverage, "report_month"),
-        cohort_vals(YearlyAverage, "report_year"),
-    )
-
-    return SingleMetricBenchmarkSchema(
-        metric=metric,
-        patient_age=patient.age,
-        cohort_age_range=f"{age_min}–{age_max}",
-        daily=_make_metric(p_daily, c_daily),
-        weekly=_make_metric(p_weekly, c_weekly),
-        monthly=_make_metric(p_monthly, c_monthly),
-        yearly=_make_metric(p_yearly, c_yearly),
+    # 5. Return the newly formatted schema
+    return AllMetricsBenchmarkSchema(
+        patient_age=patient.age, cohort_age_range=f"{age_min}–{age_max}", metrics=metrics_result
     )
