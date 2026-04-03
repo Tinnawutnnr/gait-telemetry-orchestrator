@@ -2,7 +2,7 @@ import asyncio
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.benchmark import compute_benchmark
@@ -108,32 +108,52 @@ async def get_patient_profile(
 async def get_patient_daily_average(
     patient: Patient = Depends(get_authorized_patient_for_caretaker), db: AsyncSession = Depends(get_db)
 ):
-    result = await db.execute(select(DailyAverage).where(DailyAverage.patient_id == patient.id))
-    return result.scalars().all()
+    result = await db.execute(
+        select(DailyAverage)
+        .where(DailyAverage.patient_id == patient.id)
+        .order_by(desc(DailyAverage.report_date))
+        .limit(7)
+    )
+    return result.scalars().all()[::-1]
 
 
 @router.get("/weeklyAverage/{username}", response_model=list[WeeklyAverageSchema])
 async def get_patient_weekly_average(
     patient: Patient = Depends(get_authorized_patient_for_caretaker), db: AsyncSession = Depends(get_db)
 ):
-    result = await db.execute(select(WeeklyAverage).where(WeeklyAverage.patient_id == patient.id))
-    return result.scalars().all()
+    result = await db.execute(
+        select(WeeklyAverage)
+        .where(WeeklyAverage.patient_id == patient.id)
+        .order_by(desc(WeeklyAverage.report_week))
+        .limit(4)
+    )
+    return result.scalars().all()[::-1]
 
 
 @router.get("/monthlyAverage/{username}", response_model=list[MonthlyAverageSchema])
 async def get_patient_monthly_average(
     patient: Patient = Depends(get_authorized_patient_for_caretaker), db: AsyncSession = Depends(get_db)
 ):
-    result = await db.execute(select(MonthlyAverage).where(MonthlyAverage.patient_id == patient.id))
-    return result.scalars().all()
+    result = await db.execute(
+        select(MonthlyAverage)
+        .where(MonthlyAverage.patient_id == patient.id)
+        .order_by(desc(MonthlyAverage.report_month))
+        .limit(6)
+    )
+    return result.scalars().all()[::-1]
 
 
 @router.get("/yearlyAverage/{username}", response_model=list[YearlyAverageSchema])
 async def get_patient_yearly_average(
     patient: Patient = Depends(get_authorized_patient_for_caretaker), db: AsyncSession = Depends(get_db)
 ):
-    result = await db.execute(select(YearlyAverage).where(YearlyAverage.patient_id == patient.id))
-    return result.scalars().all()
+    result = await db.execute(
+        select(YearlyAverage)
+        .where(YearlyAverage.patient_id == patient.id)
+        .order_by(desc(YearlyAverage.report_year))
+        .limit(4)
+    )
+    return result.scalars().all()[::-1]
 
 
 @router.get("/anomalyLog/{username}", response_model=list[AnomalyLogSchema])

@@ -80,9 +80,14 @@ async def get_daily_average(
     patient: Patient = Depends(get_current_patient_profile),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(DailyAverage).where(DailyAverage.patient_id == patient.id))
+    result = await db.execute(
+        select(DailyAverage)
+        .where(DailyAverage.patient_id == patient.id)
+        .order_by(desc(DailyAverage.report_date))
+        .limit(7)
+    )
     daily_avg = result.scalars().all()
-    return daily_avg
+    return daily_avg[::-1]
 
 
 @router.get("/me/weeklyAverage", response_model=list[WeeklyAverageSchema])
@@ -90,9 +95,14 @@ async def get_weekly_average(
     patient: Patient = Depends(get_current_patient_profile),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(WeeklyAverage).where(WeeklyAverage.patient_id == patient.id))
+    result = await db.execute(
+        select(WeeklyAverage)
+        .where(WeeklyAverage.patient_id == patient.id)
+        .order_by(desc(WeeklyAverage.report_week))
+        .limit(4)
+    )
     weekly_avg = result.scalars().all()
-    return weekly_avg
+    return weekly_avg[::-1]
 
 
 @router.get("/me/monthlyAverage", response_model=list[MonthlyAverageSchema])
@@ -100,9 +110,14 @@ async def get_monthly_average(
     patient: Patient = Depends(get_current_patient_profile),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(MonthlyAverage).where(MonthlyAverage.patient_id == patient.id))
+    result = await db.execute(
+        select(MonthlyAverage)
+        .where(MonthlyAverage.patient_id == patient.id)
+        .order_by(desc(MonthlyAverage.report_month))
+        .limit(6)
+    )
     monthly_avg = result.scalars().all()
-    return monthly_avg
+    return monthly_avg[::-1]
 
 
 @router.get("/me/yearlyAverage", response_model=list[YearlyAverageSchema])
@@ -110,9 +125,14 @@ async def get_yearly_average(
     patient: Patient = Depends(get_current_patient_profile),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(YearlyAverage).where(YearlyAverage.patient_id == patient.id))
+    result = await db.execute(
+        select(YearlyAverage)
+        .where(YearlyAverage.patient_id == patient.id)
+        .order_by(desc(YearlyAverage.report_year))
+        .limit(4)
+    )
     yearly_avg = result.scalars().all()
-    return yearly_avg
+    return yearly_avg[::-1]
 
 
 @router.get("/me/anomalyLog", response_model=list[AnomalyLogSchema])
