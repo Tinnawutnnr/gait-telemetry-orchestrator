@@ -158,7 +158,9 @@ def _get_patient_contact_info_sync(patient_id):
     with SessionLocal() as db:
         try:
             result = db.execute(
-                select(User.email, User.username).join(Patient, Patient.user_id == User.id).where(Patient.id == patient_id)
+                select(User.email, User.username)
+                .join(Patient, Patient.user_id == User.id)
+                .where(Patient.id == patient_id)
             ).first()
             if result:
                 return {"email": result.email, "username": result.username}
