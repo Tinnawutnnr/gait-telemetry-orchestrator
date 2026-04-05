@@ -154,19 +154,24 @@ async def get_patient_profile(patient_id):
     return await asyncio.to_thread(_get_patient_profile_sync, patient_id)
 
 
-def _get_patient_email_sync(patient_id):
+def _get_patient_contact_info_sync(patient_id):
     with SessionLocal() as db:
         try:
-            return db.scalar(
-                select(User.email).join(Patient, Patient.user_id == User.id).where(Patient.id == patient_id)
-            )
+            result = db.execute(
+                select(User.email, User.username)
+                .join(Patient, Patient.user_id == User.id)
+                .where(Patient.id == patient_id)
+            ).first()
+            if result:
+                return {"email": result.email, "username": result.username}
+            return None
         except Exception as e:
-            log.error(f"Failed to fetch patient email for {patient_id}: {e}")
+            log.error(f"Failed to fetch patient contact info for {patient_id}: {e}")
             return None
 
 
-async def get_patient_email(patient_id):
-    return await asyncio.to_thread(_get_patient_email_sync, patient_id)
+async def get_patient_contact_info(patient_id):
+    return await asyncio.to_thread(_get_patient_contact_info_sync, patient_id)
 
 
 def _signal_handler():
@@ -342,12 +347,14 @@ async def run_worker():
                                 )
 
                                 log.info("Anomaly detected! Sending alert email...")
-                                patient_email = await get_patient_email(patient_id)
+                                contact_info = await get_patient_contact_info(patient_id)
+                                patient_email = contact_info["email"] if contact_info else None
+                                patient_username = contact_info["username"] if contact_info else str(patient_id)
                                 try:
                                     email_task = asyncio.create_task(
                                         send_anomaly_alert_email(
                                             email=patient_email,
-                                            patient_id=str(patient_id),
+                                            patient_username=patient_username,
                                             anomaly_score=anomaly_log_data["anomaly_score"],
                                             root_cause_feature=anomaly_log_data["root_cause_feature"],
                                             z_score=anomaly_log_data["z_score"],
