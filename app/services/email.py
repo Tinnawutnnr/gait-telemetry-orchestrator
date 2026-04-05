@@ -72,7 +72,7 @@ def get_feature_unit(feature_key: str) -> str:
 
 async def send_anomaly_alert_email(
     email: str,
-    patient_id: str,
+    patient_username: str,
     root_cause_feature: str,
     anomaly_score: float,
     z_score: float,
@@ -149,7 +149,7 @@ async def send_anomaly_alert_email(
             <div style="padding: 24px; color: #000000;">
                 <p style="font-size: 16px; margin-top: 0;">Hello,</p>
                 <p style="font-size: 16px; color: #333333; line-height: 1.5;">
-                    We detected an unusual walking pattern for <strong>Patient {html.escape(str(patient_id))}</strong>.
+                    We detected an unusual walking pattern for <strong>@{html.escape(str(patient_username))}</strong>.
                 </p>
 
                 <div style="background-color: #F2F2F2; border-radius: 12px; padding: 16px; margin: 24px 0;">
@@ -206,7 +206,7 @@ async def send_anomaly_alert_email(
     payload = {
         "from": "Perga <noreply@contact.tinnawut.codes>",
         "to": [email],
-        "subject": f"Alert: {severity_label} in walking pattern for Patient {html.escape(str(patient_id))}",
+        "subject": f"Alert: {severity_label} in walking pattern for @{html.escape(str(patient_username))}",
         "html": html_content,
     }
 
