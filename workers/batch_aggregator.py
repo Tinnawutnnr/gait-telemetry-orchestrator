@@ -361,7 +361,7 @@ if __name__ == "__main__":
     scheduler = BlockingScheduler()
 
     # Run every day at 00:01 AM
-    scheduler.add_job(run_scheduled_job, "cron", hour=0, minute=1)
+    scheduler.add_job(run_scheduled_job, "cron", hour=0, minute=1, timezone="Asia/Bangkok")
 
     # Uncomment to test
     # scheduler.add_job(run_scheduled_job, 'interval', minutes=1)

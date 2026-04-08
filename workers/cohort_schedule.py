@@ -1,6 +1,8 @@
 import asyncio
+import logging
 import os
 
+from apscheduler.schedulers.blocking import BlockingScheduler
 from dotenv import load_dotenv
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
@@ -11,13 +13,16 @@ from app.models.orm import CohortBenchmarkData, DailyAverage, Patient
 
 load_dotenv()
 
+# Setup clean logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] BATCH_JOB — %(message)s")
+log = logging.getLogger(__name__)
+
 DATABASE_URL = os.getenv("DATABASE_URL").replace("postgresql://", "postgresql+asyncpg://", 1)
 engine = create_async_engine(DATABASE_URL)
 AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 AGE_BAND = 5
 
-# Add avg_cadence directly to the METRICS list
 METRICS = [
     "avg_max_gyr_ms",
     "avg_val_gyr_hs",
@@ -30,7 +35,8 @@ METRICS = [
 
 
 async def refresh_all_cohorts():
-    print("Starting 2 AM Daily Cohort Aggregation...")
+    """The core asynchronous database logic."""
+    log.info("Starting 2 AM Daily Cohort Aggregation...")
     async with AsyncSessionLocal() as db:
         ages_result = await db.execute(select(Patient.age).distinct().where(Patient.age.isnot(None)))
         unique_ages = [r[0] for r in ages_result.fetchall()]
@@ -44,7 +50,7 @@ async def refresh_all_cohorts():
             if not cohort_ids:
                 continue
 
-            # 3. Query DailyAverage and report_date
+            # Query DailyAverage and report_date
             subq = (
                 select(DailyAverage.patient_id, func.max(DailyAverage.report_date).label("max_date"))
                 .where(DailyAverage.patient_id.in_(cohort_ids))
@@ -79,8 +85,29 @@ async def refresh_all_cohorts():
                 await db.execute(stmt)
 
         await db.commit()
-    print(" 2 AM Aggregation Complete!")
+    log.info("Aggregation Complete!")
+
+
+def run_scheduled_job():
+    """
+    Synchronous wrapper for the scheduler. 
+    It bridges the gap between BlockingScheduler and async database operations.
+    """
+    asyncio.run(refresh_all_cohorts())
 
 
 if __name__ == "__main__":
-    asyncio.run(refresh_all_cohorts())
+    scheduler = BlockingScheduler()
+
+    # Run every day at 02:00 AM
+    # Note: If your server is on UTC and you want Bangkok time, use:
+    scheduler.add_job(run_scheduled_job, "cron", hour=2, minute=0, timezone="Asia/Bangkok")
+
+    # Uncomment this line to test it running every 1 minute while you develop!
+    # scheduler.add_job(run_scheduled_job, 'interval', minutes=1)
+
+    log.info("Batch Aggregator Started. Waiting for scheduled jobs...")
+    try:
+        scheduler.start()
+    except (KeyboardInterrupt, SystemExit):
+        log.info("Scheduler stopped.")
