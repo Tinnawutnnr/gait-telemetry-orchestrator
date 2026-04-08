@@ -90,7 +90,7 @@ async def refresh_all_cohorts():
 
 def run_scheduled_job():
     """
-    Synchronous wrapper for the scheduler. 
+    Synchronous wrapper for the scheduler.
     It bridges the gap between BlockingScheduler and async database operations.
     """
     asyncio.run(refresh_all_cohorts())
