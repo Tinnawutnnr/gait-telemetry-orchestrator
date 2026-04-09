@@ -9,7 +9,7 @@
 
 ## 1. Abstract
 
-Falls represent the leading cause of injury-related morbidity and mortality among elderly populations, yet existing clinical gait assessment methods rely on periodic, in-clinic observation that fails to capture day-to-day variability in ambulatory function. The **PERGA** (Personalized Gait Anomaly Detection in Elderly) backend is the server-side orchestration layer of a continuous gait monitoring system designed to address this gap. The system ingests high-frequency inertial measurement unit (IMU) telemetry streamed at 100 Hz from ESP32-C3 wearable devices via the MQTT protocol, routes the raw signal through an asynchronous message broker (Apache Kafka), and applies a real-time signal processing pipeline consisting of fourth-order Butterworth low-pass filtering, gait-event detection via peak matching, and five-dimensional kinematic feature extraction. Anomaly detection is performed per-patient using a Local Outlier Factor (LOF) model operating in novelty detection mode, which compares the density of incoming gait feature vectors against a continuously updated personalized baseline. Detected anomalies trigger clinical alerts to designated caretakers and are persisted alongside multi-granularity temporal aggregations (daily, weekly, monthly, yearly) in a declaratively partitioned PostgreSQL 16 time-series store. A RESTful API layer with role-based access control exposes processed gait metrics and anomaly histories to the companion mobile application.
+Falls represent the leading cause of injury-related morbidity and mortality among elderly populations, yet existing clinical gait assessment methods rely on periodic, in-clinic observation that fails to capture day-to-day variability in ambulatory function. The **PERGA** (Personalized Gait Anomaly Detection in Elderly) backend is the server-side orchestration layer of a continuous gait monitoring system designed to address this gap. The system ingests high-frequency inertial measurement unit (IMU) telemetry streamed at 100 Hz from ESP32-C3 wearable devices via the MQTT protocol, routes the raw signal through an asynchronous message broker (Apache Kafka), and applies a real-time signal processing pipeline consisting of fourth-order Butterworth low-pass filtering, gait-event detection via peak matching, and five-dimensional kinematic feature extraction. Anomaly detection is performed per-patient using a Local Outlier Factor (LOF) model operating in novelty detection mode, which compares the density of incoming gait feature vectors against a continuously updated personalized baseline. Detected anomalies trigger clinical alerts to designated caregivers and are persisted alongside multi-granularity temporal aggregations (daily, weekly, monthly, yearly) in a declaratively partitioned PostgreSQL 16 time-series store. A RESTful API layer with role-based access control exposes processed gait metrics and anomaly histories to the companion mobile application.
 
 ---
 
@@ -347,7 +347,7 @@ When an anomaly is detected, the ML worker:
 
 ### 5.1 Entity-Relationship Overview
 
-The database contains 10 tables organized into three domains: **identity** (users, caretakers, patients), **time-series** (window_reports, anomaly_logs), and **aggregation** (daily/weekly/monthly/yearly averages, cohort benchmarks).
+The database contains 10 tables organized into three domains: **identity** (users, caregivers, patients), **time-series** (window_reports, anomaly_logs), and **aggregation** (daily/weekly/monthly/yearly averages, cohort benchmarks).
 
 ### 5.2 Identity Tables
 
@@ -358,13 +358,13 @@ The database contains 10 tables organized into three domains: **identity** (user
 | `username` | `VARCHAR` | UNIQUE, NOT NULL, indexed |
 | `email` | `CITEXT` | UNIQUE, NOT NULL, indexed |
 | `hashed_password` | `VARCHAR` | NOT NULL |
-| `role` | `VARCHAR` | NOT NULL, CHECK IN (`'caretaker'`, `'patient'`) |
+| `role` | `VARCHAR` | NOT NULL, CHECK IN (`'caregiver'`, `'patient'`) |
 | `created_at` | `TIMESTAMP WITH TIME ZONE` | DEFAULT `now()` |
 | `updated_at` | `TIMESTAMP WITH TIME ZONE` | DEFAULT `now()`, ON UPDATE `now()` |
 
 The `CITEXT` extension provides case-insensitive email uniqueness without application-level normalization.
 
-#### `caretakers`
+#### `caregivers`
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `BIGINT` | PRIMARY KEY, auto-increment |
@@ -378,7 +378,7 @@ The `CITEXT` extension provides case-insensitive email uniqueness without applic
 |--------|------|-------------|
 | `id` | `BIGINT` | PRIMARY KEY, auto-increment |
 | `user_id` | `BIGINT` | UNIQUE, NULLABLE, FK &rarr; `users(id)` ON DELETE CASCADE |
-| `caretaker_id` | `BIGINT` | NULLABLE, FK &rarr; `caretakers(id)` ON DELETE SET NULL |
+| `caregiver_id` | `BIGINT` | NULLABLE, FK &rarr; `caregivers(id)` ON DELETE SET NULL |
 | `first_name` | `VARCHAR` | NOT NULL |
 | `last_name` | `VARCHAR` | NOT NULL |
 | `age` | `INTEGER` | NULLABLE |
@@ -387,7 +387,7 @@ The `CITEXT` extension provides case-insensitive email uniqueness without applic
 | `telemetry_token` | `VARCHAR` | UNIQUE, NOT NULL, indexed (UUID v4) |
 | `updated_at` | `TIMESTAMP WITH TIME ZONE` | DEFAULT `now()` |
 
-The `telemetry_token` enables device authentication without transmitting user credentials over MQTT. The `caretaker_id` foreign key uses `SET NULL` to allow soft-unlinking without cascading deletes.
+The `telemetry_token` enables device authentication without transmitting user credentials over MQTT. The `caregiver_id` foreign key uses `SET NULL` to allow soft-unlinking without cascading deletes.
 
 ### 5.3 Time-Series Tables (Partitioned)
 
@@ -479,7 +479,7 @@ Stores pre-computed arrays of peer metric values grouped by patient age, used fo
 
 The schema is managed through 14 sequential Alembic migrations. Key migrations include:
 
-- **`44268ef266c0`**: Initial schema (users, caretakers, patients, window_reports, anomaly_logs, daily_averages).
+- **`44268ef266c0`**: Initial schema (users, caregivers, patients, window_reports, anomaly_logs, daily_averages).
 - **`157ad1d052bb`**: Introduced declarative range partitioning. Renamed original tables, recreated them as partitioned, migrated existing data, and seeded initial monthly partitions. This migration is the most complex, involving raw SQL DDL for partition creation.
 - **`242b98f29d3b`**: Migrated `users.email` from `VARCHAR` to `CITEXT` with duplicate detection and lowercase normalization.
 - **`ed0ae94d0ecb`**: Added `avg_cadence` to all aggregation tables and created the `cohort_benchmark_data` table.
@@ -499,7 +499,7 @@ The REST API is organized under the `/api/v1` prefix with five router modules:
 | `auth` | `/api/v1/auth` | Registration, login, password reset |
 | `profiles` | `/api/v1/profiles` | Profile CRUD for both roles |
 | `patients` | `/api/v1/patients` | Patient self-service (metrics, reports, benchmarks) |
-| `caretaker_patients` | `/api/v1/caretakers/patients` | Caretaker management of linked patients |
+| `caregiver_patients` | `/api/v1/caregivers/patients` | Caregiver management of linked patients |
 | `mqtt_credential` | `/api/v1/mqtt-credential` | MQTT broker credentials for device pairing |
 
 Additionally, a health check endpoint at `GET /health` returns `{"status": "healthy"}` without authentication.
@@ -522,8 +522,8 @@ Registration performs identity-only provisioning (creates a `User` record; profi
 | Method | Path | Auth | Request | Response | Status |
 |--------|------|------|---------|----------|--------|
 | GET | `/me/status` | JWT | — | `ProfileStatus` | 200 |
-| POST | `/me` | JWT | `CaretakerProfile` or `PatientProfile` | Profile object | 201 |
-| PUT | `/me` | JWT | `CaretakerProfile` or `PatientProfile` | Profile object | 200 |
+| POST | `/me` | JWT | `CaregiverProfile` or `PatientProfile` | Profile object | 201 |
+| PUT | `/me` | JWT | `CaregiverProfile` or `PatientProfile` | Profile object | 200 |
 | GET | `/me` | JWT | — | Profile object | 200 |
 
 Profile creation is role-polymorphic: the request body schema is selected based on the JWT's `role` claim.
@@ -532,7 +532,7 @@ Profile creation is role-polymorphic: the request body schema is selected based 
 
 | Method | Path | Auth | Response |
 |--------|------|------|----------|
-| GET | `/me/status` | JWT (patient) | `PatientCaretakerStatus` |
+| GET | `/me/status` | JWT (patient) | `PatientCaregiverStatus` |
 | POST | `/me/sessions/stop` | JWT (patient) | `{"status": "success"}` |
 | GET | `/me/windowReport` | JWT (patient) | Latest `WindowReport` |
 | GET | `/me/dailyAverage` | JWT (patient) | Last 7 `DailyAverageSchema` |
@@ -551,24 +551,24 @@ The fall analysis endpoint accepts a `date_str` query parameter and returns comp
 
 The benchmark endpoint computes the patient's percentile rank within their age cohort (&plusmn;5 years) across 7 metrics, with labels ("above_peers", "with_peers", "below_peers") based on &plusmn;1 standard deviation bounds.
 
-#### Caretaker Patient Management (`/api/v1/caretakers/patients`)
+#### Caregiver Patient Management (`/api/v1/caregivers/patients`)
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/` | JWT (caretaker) | Link patient by username |
-| DELETE | `/{username}` | JWT (caretaker) | Unlink patient (SET NULL) |
-| GET | `/` | JWT (caretaker) | List all linked patients |
-| GET | `/{username}` | JWT (caretaker) | Patient profile |
-| GET | `/dailyAverage/{username}` | JWT (caretaker) | Patient's daily averages |
-| GET | `/weeklyAverage/{username}` | JWT (caretaker) | Patient's weekly averages |
-| GET | `/monthlyAverage/{username}` | JWT (caretaker) | Patient's monthly averages |
-| GET | `/yearlyAverage/{username}` | JWT (caretaker) | Patient's yearly averages |
-| GET | `/anomalyLog/{username}` | JWT (caretaker) | Patient's anomaly logs |
-| GET | `/dailyAverage/byDate/{username}` | JWT (caretaker) | Daily average by date |
-| GET | `/fallAnalysis/{username}` | JWT (caretaker) | Fall analysis comparison |
-| GET | `/benchmark/{username}` | JWT (caretaker) | Patient benchmark |
+| POST | `/` | JWT (caregiver) | Link patient by username |
+| DELETE | `/{username}` | JWT (caregiver) | Unlink patient (SET NULL) |
+| GET | `/` | JWT (caregiver) | List all linked patients |
+| GET | `/{username}` | JWT (caregiver) | Patient profile |
+| GET | `/dailyAverage/{username}` | JWT (caregiver) | Patient's daily averages |
+| GET | `/weeklyAverage/{username}` | JWT (caregiver) | Patient's weekly averages |
+| GET | `/monthlyAverage/{username}` | JWT (caregiver) | Patient's monthly averages |
+| GET | `/yearlyAverage/{username}` | JWT (caregiver) | Patient's yearly averages |
+| GET | `/anomalyLog/{username}` | JWT (caregiver) | Patient's anomaly logs |
+| GET | `/dailyAverage/byDate/{username}` | JWT (caregiver) | Daily average by date |
+| GET | `/fallAnalysis/{username}` | JWT (caregiver) | Fall analysis comparison |
+| GET | `/benchmark/{username}` | JWT (caregiver) | Patient benchmark |
 
-All caretaker endpoints enforce authorization: the requesting caretaker must have an active link (`patient.caretaker_id == caretaker.id`) to the target patient.
+All caregiver endpoints enforce authorization: the requesting caregiver must have an active link (`patient.caregiver_id == caregiver.id`) to the target patient.
 
 #### MQTT Credentials (`/api/v1/mqtt-credential`)
 
@@ -587,7 +587,7 @@ Authentication uses the OAuth2 Password Bearer flow:
 - **Token validation**: The `get_current_user` dependency decodes the JWT, extracts the user ID and role, and queries the database for the `User` object. Invalid or expired tokens return HTTP 401.
 - **Role enforcement**: The `require_role(*allowed_roles)` dependency factory returns a FastAPI dependency that checks `current_user.role` against the allowed set, returning HTTP 403 if unauthorized.
 
-Two roles exist: `patient` and `caretaker`. There is no admin role or superuser concept.
+Two roles exist: `patient` and `caregiver`. There is no admin role or superuser concept.
 
 ### 6.4 Rate Limiting
 

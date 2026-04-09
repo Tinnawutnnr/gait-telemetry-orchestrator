@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.models.orm import Caretaker, Patient, User
+from app.models.orm import Caregiver, Patient, User
 from app.schemas.auth import TokenData
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
@@ -52,11 +52,11 @@ def require_role(*allowed_roles: str):
     return _check
 
 
-async def _get_caretaker_profile(user: User, db: AsyncSession) -> Caretaker:
-    caretaker = await db.scalar(select(Caretaker).where(Caretaker.user_id == user.id))
-    if not caretaker:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caretaker profile not found")
-    return caretaker
+async def _get_caregiver_profile(user: User, db: AsyncSession) -> Caregiver:
+    caregiver = await db.scalar(select(Caregiver).where(Caregiver.user_id == user.id))
+    if not caregiver:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caregiver profile not found")
+    return caregiver
 
 
 async def _get_patient_profile(username: str, db: AsyncSession) -> Patient:
@@ -70,19 +70,19 @@ async def _get_patient_profile(username: str, db: AsyncSession) -> Patient:
     return patient
 
 
-async def get_authorized_patient_for_caretaker(
+async def get_authorized_patient_for_caregiver(
     username: str,
-    current_user: User = Depends(require_role("caretaker")),
+    current_user: User = Depends(require_role("caregiver")),
     db: AsyncSession = Depends(get_db),
 ) -> Patient:
-    caretaker, patient = await asyncio.gather(
-        _get_caretaker_profile(current_user, db), _get_patient_profile(username, db)
+    caregiver, patient = await asyncio.gather(
+        _get_caregiver_profile(current_user, db), _get_patient_profile(username, db)
     )
 
-    if not patient.caretaker_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Patient is not linked to any caretaker")
+    if not patient.caregiver_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Patient is not linked to any caregiver")
 
-    if patient.caretaker_id != caretaker.id:
+    if patient.caregiver_id != caregiver.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Patient is not linked to you")
 
     return patient

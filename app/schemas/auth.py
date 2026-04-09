@@ -17,7 +17,7 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     username: str = Field(min_length=3, max_length=50)
     password: str = Field(min_length=8, max_length=128)
-    role: str = Field(pattern=r"^(caretaker|patient)$")
+    role: str = Field(pattern=r"^(caregiver|patient)$")
 
     @field_validator("username")
     @classmethod

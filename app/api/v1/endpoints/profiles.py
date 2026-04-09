@@ -6,8 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
-from app.models.orm import Caretaker, Patient, User
-from app.schemas.profiles import CaretakerProfile, PatientProfile, ProfileResponse, ProfileStatus
+from app.models.orm import Caregiver, Patient, User
+from app.schemas.profiles import CaregiverProfile, PatientProfile, ProfileResponse, ProfileStatus
 
 router = APIRouter(prefix="/profiles", tags=["profiles"])
 
@@ -17,8 +17,8 @@ async def profile_status(
     current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> ProfileStatus:
     # Check whether the authenticated user has created a profile yet.
-    if current_user.role == "caretaker":
-        has = await db.scalar(select(Caretaker).where(Caretaker.user_id == current_user.id)) is not None
+    if current_user.role == "caregiver":
+        has = await db.scalar(select(Caregiver).where(Caregiver.user_id == current_user.id)) is not None
     else:
         has = await db.scalar(select(Patient).where(Patient.user_id == current_user.id)) is not None
     return ProfileStatus(has_profile=has, role=current_user.role)
@@ -26,19 +26,19 @@ async def profile_status(
 
 @router.post("/me", response_model=ProfileResponse, status_code=status.HTTP_201_CREATED)
 async def create_profile(
-    body: CaretakerProfile | PatientProfile,
+    body: CaregiverProfile | PatientProfile,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> Caretaker | Patient:
+) -> Caregiver | Patient:
     # One-time profile provisioning based on the user's role.
-    if current_user.role == "caretaker":
-        if await db.scalar(select(Caretaker).where(Caretaker.user_id == current_user.id)):
+    if current_user.role == "caregiver":
+        if await db.scalar(select(Caregiver).where(Caregiver.user_id == current_user.id)):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Profile already exists")
-        if not isinstance(body, CaretakerProfile):
+        if not isinstance(body, CaregiverProfile):
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid payload for caretaker"
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid payload for caregiver"
             )
-        profile = Caretaker(user_id=current_user.id, first_name=body.first_name, last_name=body.last_name)
+        profile = Caregiver(user_id=current_user.id, first_name=body.first_name, last_name=body.last_name)
 
     else:
         if await db.scalar(select(Patient).where(Patient.user_id == current_user.id)):
@@ -70,17 +70,17 @@ async def create_profile(
 
 @router.put("/me", response_model=ProfileResponse, status_code=status.HTTP_200_OK)
 async def update_profile(
-    body: CaretakerProfile | PatientProfile,
+    body: CaregiverProfile | PatientProfile,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> Caretaker | Patient:
-    if current_user.role == "caretaker":
-        profile = await db.scalar(select(Caretaker).where(Caretaker.user_id == current_user.id))
+) -> Caregiver | Patient:
+    if current_user.role == "caregiver":
+        profile = await db.scalar(select(Caregiver).where(Caregiver.user_id == current_user.id))
         if profile is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
-        if not isinstance(body, CaretakerProfile):
+        if not isinstance(body, CaregiverProfile):
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid payload for caretaker"
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid payload for caregiver"
             )
         profile.first_name = body.first_name
         profile.last_name = body.last_name
@@ -109,16 +109,16 @@ async def update_profile(
         ) from e
 
 
-@router.get("/me", response_model=PatientProfile | CaretakerProfile, status_code=status.HTTP_200_OK)
+@router.get("/me", response_model=PatientProfile | CaregiverProfile, status_code=status.HTTP_200_OK)
 async def get_profile(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> CaretakerProfile | PatientProfile:
-    if current_user.role == "caretaker":
-        profile = await db.scalar(select(Caretaker).where(Caretaker.user_id == current_user.id))
+) -> CaregiverProfile | PatientProfile:
+    if current_user.role == "caregiver":
+        profile = await db.scalar(select(Caregiver).where(Caregiver.user_id == current_user.id))
         if profile is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
-        return CaretakerProfile(first_name=profile.first_name, last_name=profile.last_name)
+        return CaregiverProfile(first_name=profile.first_name, last_name=profile.last_name)
 
     else:
         profile = await db.scalar(select(Patient).where(Patient.user_id == current_user.id))

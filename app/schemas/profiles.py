@@ -6,7 +6,7 @@ class ProfileStatus(BaseModel):
     role: str
 
 
-class CaretakerProfile(BaseModel):
+class CaregiverProfile(BaseModel):
     model_config = {"extra": "forbid"}
 
     first_name: str = Field(min_length=1, max_length=100)

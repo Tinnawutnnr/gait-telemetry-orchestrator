@@ -40,17 +40,17 @@ class User(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
-    caretaker: Mapped[Caretaker | None] = relationship(back_populates="user")
+    caregiver: Mapped[Caregiver | None] = relationship(back_populates="user")
     patient: Mapped[Patient | None] = relationship(back_populates="user")
 
-    __table_args__ = (CheckConstraint("role IN ('caretaker', 'patient')", name="ck_users_role"),)
+    __table_args__ = (CheckConstraint("role IN ('caregiver', 'patient')", name="ck_users_role"),)
 
     def __repr__(self) -> str:
         return f"<User id={self.id} username={self.username!r} role={self.role!r}>"
 
 
-class Caretaker(Base):
-    __tablename__ = "caretakers"
+class Caregiver(Base):
+    __tablename__ = "caregivers"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(
@@ -62,11 +62,11 @@ class Caretaker(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
-    user: Mapped[User] = relationship(back_populates="caretaker")
-    patients: Mapped[list[Patient]] = relationship(back_populates="caretaker")
+    user: Mapped[User] = relationship(back_populates="caregiver")
+    patients: Mapped[list[Patient]] = relationship(back_populates="caregiver")
 
     def __repr__(self) -> str:
-        return f"<Caretaker id={self.id} name={self.first_name!r} {self.last_name!r}>"
+        return f"<Caregiver id={self.id} name={self.first_name!r} {self.last_name!r}>"
 
 
 class Patient(Base):
@@ -80,8 +80,8 @@ class Patient(Base):
         nullable=True,
         index=True,
     )
-    caretaker_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("caretakers.id", ondelete="SET NULL"), nullable=True, index=True
+    caregiver_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("caregivers.id", ondelete="SET NULL"), nullable=True, index=True
     )
     first_name: Mapped[str] = mapped_column(String, nullable=False)
     last_name: Mapped[str] = mapped_column(String, nullable=False)
@@ -96,7 +96,7 @@ class Patient(Base):
     )
 
     user: Mapped[User | None] = relationship(back_populates="patient")
-    caretaker: Mapped[Caretaker | None] = relationship(back_populates="patients")
+    caregiver: Mapped[Caregiver | None] = relationship(back_populates="patients")
     window_reports: Mapped[list[WindowReport]] = relationship(back_populates="patient")
     daily_averages: Mapped[list[DailyAverage]] = relationship(back_populates="patient")
     weekly_averages: Mapped[list[WeeklyAverage]] = relationship(back_populates="patient")

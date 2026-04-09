@@ -8,9 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.benchmark import compute_benchmark
 from app.core.database import get_db
 from app.core.dependencies import (
-    _get_caretaker_profile,
+    _get_caregiver_profile,
     _get_patient_profile,
-    get_authorized_patient_for_caretaker,
+    get_authorized_patient_for_caregiver,
     get_report_pair,
     require_role,
 )
@@ -23,7 +23,7 @@ from app.models.orm import (
     WeeklyAverage,
     YearlyAverage,
 )
-from app.schemas.caretaker_patients import LinkPatientRequest, PatientListItem, PatientProfileResponse
+from app.schemas.caregiver_patients import LinkPatientRequest, PatientListItem, PatientProfileResponse
 from app.schemas.reports import (
     AllMetricsBenchmarkSchema,
     AnomalyLogSchema,
@@ -34,24 +34,24 @@ from app.schemas.reports import (
     YearlyAverageSchema,
 )
 
-router = APIRouter(prefix="/caretakers/patients", tags=["caretaker-patients"])
+router = APIRouter(prefix="/caregivers/patients", tags=["caregiver-patients"])
 
 
 @router.post("", status_code=status.HTTP_204_NO_CONTENT)
 async def link_patient(
     body: LinkPatientRequest,
-    current_user: User = Depends(require_role("caretaker")),
+    current_user: User = Depends(require_role("caregiver")),
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    # Link a patient (by username) to this caretaker.
-    caretaker = await _get_caretaker_profile(current_user, db)
+    # Link a patient (by username) to this caregiver.
+    caregiver = await _get_caregiver_profile(current_user, db)
 
     patient = await _get_patient_profile(body.username, db)
 
-    if patient.caretaker_id:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Patient is already linked to a caretaker")
+    if patient.caregiver_id:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Patient is already linked to a caregiver")
 
-    patient.caretaker_id = caretaker.id
+    patient.caregiver_id = caregiver.id
     try:
         await db.commit()
     except Exception as e:
@@ -61,10 +61,10 @@ async def link_patient(
 
 @router.delete("/{username}", status_code=status.HTTP_204_NO_CONTENT)
 async def unlink_patient(
-    patient: Patient = Depends(get_authorized_patient_for_caretaker), db: AsyncSession = Depends(get_db)
+    patient: Patient = Depends(get_authorized_patient_for_caregiver), db: AsyncSession = Depends(get_db)
 ) -> None:
-    # Unlink a patient from this caretaker (soft-unlink: sets caretaker_id to NULL).
-    patient.caretaker_id = None
+    # Unlink a patient from this caregiver (soft-unlink: sets caregiver_id to NULL).
+    patient.caregiver_id = None
     try:
         await db.commit()
     except Exception as e:
@@ -74,16 +74,16 @@ async def unlink_patient(
 
 @router.get("", response_model=list[PatientListItem])
 async def list_patients(
-    current_user: User = Depends(require_role("caretaker")),
+    current_user: User = Depends(require_role("caregiver")),
     db: AsyncSession = Depends(get_db),
 ) -> list[PatientListItem]:
-    # List all patients managed by this caretaker.
-    caretaker = await _get_caretaker_profile(current_user, db)
+    # List all patients managed by this caregiver.
+    caregiver = await _get_caregiver_profile(current_user, db)
     # use join for better performance instead of N+1 queries
     stmt = (
         select(Patient.id, User.username, Patient.first_name, Patient.last_name)
         .join(User, Patient.user_id == User.id)
-        .where(Patient.caretaker_id == caretaker.id)
+        .where(Patient.caregiver_id == caregiver.id)
     )
 
     results = (await db.execute(stmt)).all()
@@ -92,7 +92,7 @@ async def list_patients(
 
 @router.get("/{username}", response_model=PatientProfileResponse)
 async def get_patient_profile(
-    patient: Patient = Depends(get_authorized_patient_for_caretaker),
+    patient: Patient = Depends(get_authorized_patient_for_caregiver),
 ) -> PatientProfileResponse:
     return PatientProfileResponse(
         id=patient.id,
@@ -106,7 +106,7 @@ async def get_patient_profile(
 
 @router.get("/dailyAverage/{username}", response_model=list[DailyAverageSchema])
 async def get_patient_daily_average(
-    patient: Patient = Depends(get_authorized_patient_for_caretaker), db: AsyncSession = Depends(get_db)
+    patient: Patient = Depends(get_authorized_patient_for_caregiver), db: AsyncSession = Depends(get_db)
 ):
     result = await db.execute(
         select(DailyAverage)
@@ -119,7 +119,7 @@ async def get_patient_daily_average(
 
 @router.get("/weeklyAverage/{username}", response_model=list[WeeklyAverageSchema])
 async def get_patient_weekly_average(
-    patient: Patient = Depends(get_authorized_patient_for_caretaker), db: AsyncSession = Depends(get_db)
+    patient: Patient = Depends(get_authorized_patient_for_caregiver), db: AsyncSession = Depends(get_db)
 ):
     result = await db.execute(
         select(WeeklyAverage)
@@ -132,7 +132,7 @@ async def get_patient_weekly_average(
 
 @router.get("/monthlyAverage/{username}", response_model=list[MonthlyAverageSchema])
 async def get_patient_monthly_average(
-    patient: Patient = Depends(get_authorized_patient_for_caretaker), db: AsyncSession = Depends(get_db)
+    patient: Patient = Depends(get_authorized_patient_for_caregiver), db: AsyncSession = Depends(get_db)
 ):
     result = await db.execute(
         select(MonthlyAverage)
@@ -145,7 +145,7 @@ async def get_patient_monthly_average(
 
 @router.get("/yearlyAverage/{username}", response_model=list[YearlyAverageSchema])
 async def get_patient_yearly_average(
-    patient: Patient = Depends(get_authorized_patient_for_caretaker), db: AsyncSession = Depends(get_db)
+    patient: Patient = Depends(get_authorized_patient_for_caregiver), db: AsyncSession = Depends(get_db)
 ):
     result = await db.execute(
         select(YearlyAverage)
@@ -158,7 +158,7 @@ async def get_patient_yearly_average(
 
 @router.get("/anomalyLog/{username}", response_model=list[AnomalyLogSchema])
 async def get_patient_anomaly_log(
-    patient: Patient = Depends(get_authorized_patient_for_caretaker), db: AsyncSession = Depends(get_db)
+    patient: Patient = Depends(get_authorized_patient_for_caregiver), db: AsyncSession = Depends(get_db)
 ):
     result = await db.execute(select(AnomalyLog).where(AnomalyLog.patient_id == patient.id))
     return result.scalars().all()
@@ -167,7 +167,7 @@ async def get_patient_anomaly_log(
 @router.get("/dailyAverage/byDate/{username}", response_model=DailyAverageSchema | None)
 async def get_patient_daily_average_by_date(
     date_str: str = Query(..., description="Date in YYYY-MM-DD format"),
-    patient: Patient = Depends(get_authorized_patient_for_caretaker),
+    patient: Patient = Depends(get_authorized_patient_for_caregiver),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -184,7 +184,7 @@ async def get_patient_daily_average_by_date(
 @router.get("/fallAnalysis/{username}", response_model=FallAnalysisResponseSchema)
 async def get_patient_fall_analysis(
     date_str: str = Query(..., description="Date in YYYY-MM-DD format"),
-    patient: Patient = Depends(get_authorized_patient_for_caretaker),
+    patient: Patient = Depends(get_authorized_patient_for_caregiver),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -222,8 +222,8 @@ async def get_patient_fall_analysis(
 
 
 @router.get("/benchmark/{username}", response_model=AllMetricsBenchmarkSchema)
-async def get_patient_benchmark_caretaker(
-    patient: Patient = Depends(get_authorized_patient_for_caretaker),
+async def get_patient_benchmark_caregiver(
+    patient: Patient = Depends(get_authorized_patient_for_caregiver),
     db: AsyncSession = Depends(get_db),
 ):
     if patient.age is None:

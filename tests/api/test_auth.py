@@ -1,7 +1,7 @@
 from httpx import AsyncClient
 import pytest
 
-from tests.conftest import CARETAKER_EMAIL, CARETAKER_USERNAME, TEST_PASSWORD
+from tests.conftest import CAREGIVER_EMAIL, CAREGIVER_USERNAME, TEST_PASSWORD
 
 # ── Endpoint URLs ────────────────────────────────────────────────────────────
 _REGISTER = "/api/v1/auth/register"
@@ -14,14 +14,14 @@ _LOGIN = "/api/v1/auth/login"
 class TestRegister:
     # POST /api/v1/auth/register — identity-only provisioning.
 
-    async def test_caretaker_returns_201_with_bearer_token(self, client: AsyncClient) -> None:
+    async def test_caregiver_returns_201_with_bearer_token(self, client: AsyncClient) -> None:
         resp = await client.post(
             _REGISTER,
             json={
-                "username": "new_caretaker",
-                "email": "new_caretaker@example.com",
+                "username": "new_caregiver",
+                "email": "new_caregiver@example.com",
                 "password": TEST_PASSWORD,
-                "role": "caretaker",
+                "role": "caregiver",
             },
         )
         assert resp.status_code == 201
@@ -46,10 +46,10 @@ class TestRegister:
         resp = await client.post(
             _REGISTER,
             json={
-                "username": CARETAKER_USERNAME,
+                "username": CAREGIVER_USERNAME,
                 "email": "unique@example.com",
                 "password": TEST_PASSWORD,
-                "role": "caretaker",
+                "role": "caregiver",
             },
         )
         assert resp.status_code == 409
@@ -60,9 +60,9 @@ class TestRegister:
             _REGISTER,
             json={
                 "username": "unique_username",
-                "email": CARETAKER_EMAIL,
+                "email": CAREGIVER_EMAIL,
                 "password": TEST_PASSWORD,
-                "role": "caretaker",
+                "role": "caregiver",
             },
         )
         assert resp.status_code == 409
@@ -78,7 +78,7 @@ class TestRegister:
     async def test_short_password_returns_422(self, client: AsyncClient) -> None:
         resp = await client.post(
             _REGISTER,
-            json={"username": "short_pw", "email": "short_pw@example.com", "password": "abc", "role": "caretaker"},
+            json={"username": "short_pw", "email": "short_pw@example.com", "password": "abc", "role": "caregiver"},
         )
         assert resp.status_code == 422
 
@@ -89,7 +89,7 @@ class TestRegister:
     async def test_username_too_short_returns_422(self, client: AsyncClient) -> None:
         resp = await client.post(
             _REGISTER,
-            json={"username": "ab", "email": "ab@example.com", "password": TEST_PASSWORD, "role": "caretaker"},
+            json={"username": "ab", "email": "ab@example.com", "password": TEST_PASSWORD, "role": "caregiver"},
         )
         assert resp.status_code == 422
 
@@ -103,7 +103,7 @@ class TestLogin:
     async def test_valid_credentials_returns_bearer_token(self, client: AsyncClient, test_user) -> None:  # noqa: ARG002
         resp = await client.post(
             _LOGIN,
-            data={"username": CARETAKER_EMAIL, "password": TEST_PASSWORD},
+            data={"username": CAREGIVER_EMAIL, "password": TEST_PASSWORD},
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -113,7 +113,7 @@ class TestLogin:
     async def test_wrong_password_returns_401(self, client: AsyncClient, test_user) -> None:  # noqa: ARG002
         resp = await client.post(
             _LOGIN,
-            data={"username": CARETAKER_EMAIL, "password": "wrongP@ssword1"},  # noqa: S106
+            data={"username": CAREGIVER_EMAIL, "password": "wrongP@ssword1"},  # noqa: S106
         )
         assert resp.status_code == 401
         assert resp.json()["detail"] == "Incorrect email or password"
@@ -126,7 +126,7 @@ class TestLogin:
         assert resp.status_code == 401
 
     async def test_missing_password_returns_422(self, client: AsyncClient) -> None:
-        resp = await client.post(_LOGIN, data={"username": CARETAKER_EMAIL})
+        resp = await client.post(_LOGIN, data={"username": CAREGIVER_EMAIL})
         assert resp.status_code == 422
 
     @pytest.mark.parametrize("payload", [{"password": TEST_PASSWORD}, {}])
