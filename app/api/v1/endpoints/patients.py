@@ -17,7 +17,7 @@ from app.models.orm import (
     WindowReport,
     YearlyAverage,
 )
-from app.schemas.patients import PatientCaretakerStatus
+from app.schemas.patients import PatientCaregiverStatus
 from app.schemas.reports import (
     AllMetricsBenchmarkSchema,
     AnomalyLogSchema,
@@ -32,15 +32,15 @@ from workers.batch_aggregator import calculate_averages_for_date
 router = APIRouter(prefix="/patients", tags=["patients"])
 
 
-# for checking is patient already has caretaker or not
-@router.get("/me/status", response_model=PatientCaretakerStatus)
-async def patient_caretaker_status(
+# for checking is patient already has caregiver or not
+@router.get("/me/status", response_model=PatientCaregiverStatus)
+async def patient_caregiver_status(
     patient: Patient = Depends(get_current_patient_profile),
-) -> PatientCaretakerStatus:
-    # Return whether this patient has been linked to a caretaker.
-    return PatientCaretakerStatus(
-        has_caretaker=patient.caretaker_id is not None,
-        caretaker_id=patient.caretaker_id,
+) -> PatientCaregiverStatus:
+    # Return whether this patient has been linked to a caregiver.
+    return PatientCaregiverStatus(
+        has_caregiver=patient.caregiver_id is not None,
+        caregiver_id=patient.caregiver_id,
     )
 
 

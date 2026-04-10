@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
 
-class PatientCaretakerStatus(BaseModel):
-    has_caretaker: bool
-    caretaker_id: int | None = None
+class PatientCaregiverStatus(BaseModel):
+    has_caregiver: bool
+    caregiver_id: int | None = None

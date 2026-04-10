@@ -1,7 +1,7 @@
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.orm import Caretaker, Patient, User
+from app.models.orm import Caregiver, Patient, User
 
 # ── Endpoint URLs ────────────────────────────────────────────────────────────
 _STATUS = "/api/v1/profiles/me/status"
@@ -19,12 +19,12 @@ class TestProfileStatus:
         assert resp.status_code == 200
         body = resp.json()
         assert body["has_profile"] is False
-        assert body["role"] == "caretaker"
+        assert body["role"] == "caregiver"
 
     async def test_with_profile_returns_true(
         self, authorized_client: AsyncClient, test_user, db_session: AsyncSession
     ) -> None:
-        db_session.add(Caretaker(user_id=test_user.id, first_name="Jane", last_name="Doe"))
+        db_session.add(Caregiver(user_id=test_user.id, first_name="Jane", last_name="Doe"))
         await db_session.flush()
 
         resp = await authorized_client.get(_STATUS)
@@ -61,7 +61,7 @@ class TestProfileStatus:
 class TestCreateProfile:
     # POST /api/v1/profiles/me
 
-    async def test_caretaker_profile_returns_201(self, authorized_client: AsyncClient) -> None:
+    async def test_caregiver_profile_returns_201(self, authorized_client: AsyncClient) -> None:
         resp = await authorized_client.post(
             _PROFILE,
             json={"first_name": "Jane", "last_name": "Doe"},
@@ -90,7 +90,7 @@ class TestCreateProfile:
     async def test_duplicate_profile_returns_409(
         self, authorized_client: AsyncClient, test_user, db_session: AsyncSession
     ) -> None:
-        db_session.add(Caretaker(user_id=test_user.id, first_name="Jane", last_name="Doe"))
+        db_session.add(Caregiver(user_id=test_user.id, first_name="Jane", last_name="Doe"))
         await db_session.flush()
 
         resp = await authorized_client.post(_PROFILE, json={"first_name": "Jane", "last_name": "Doe"})
@@ -101,7 +101,7 @@ class TestCreateProfile:
         resp = await client.post(_PROFILE, json={"first_name": "Jane", "last_name": "Doe"})
         assert resp.status_code == 401
 
-    async def test_caretaker_missing_last_name_returns_422(self, authorized_client: AsyncClient) -> None:
+    async def test_caregiver_missing_last_name_returns_422(self, authorized_client: AsyncClient) -> None:
         resp = await authorized_client.post(_PROFILE, json={"first_name": "Jane"})
         assert resp.status_code == 422
 
@@ -116,10 +116,10 @@ class TestCreateProfile:
 class TestGetProfile:
     # GET /api/v1/profiles/me
 
-    async def test_caretaker_returns_200(
+    async def test_caregiver_returns_200(
         self, authorized_client: AsyncClient, test_user, db_session: AsyncSession
     ) -> None:
-        db_session.add(Caretaker(user_id=test_user.id, first_name="Jane", last_name="Doe"))
+        db_session.add(Caregiver(user_id=test_user.id, first_name="Jane", last_name="Doe"))
         await db_session.flush()
 
         resp = await authorized_client.get(_PROFILE)
@@ -142,7 +142,7 @@ class TestGetProfile:
         assert body["first_name"] == "John"
         assert body["height"] == 175.0
 
-    async def test_caretaker_no_profile_returns_404(self, authorized_client: AsyncClient) -> None:
+    async def test_caregiver_no_profile_returns_404(self, authorized_client: AsyncClient) -> None:
         resp = await authorized_client.get(_PROFILE)
         assert resp.status_code == 404
 
@@ -161,10 +161,10 @@ class TestGetProfile:
 class TestUpdateProfile:
     # PUT /api/v1/profiles/me
 
-    async def test_caretaker_update_returns_200(
+    async def test_caregiver_update_returns_200(
         self, authorized_client: AsyncClient, test_user, db_session: AsyncSession
     ) -> None:
-        db_session.add(Caretaker(user_id=test_user.id, first_name="Jane", last_name="Doe"))
+        db_session.add(Caregiver(user_id=test_user.id, first_name="Jane", last_name="Doe"))
         await db_session.flush()
 
         resp = await authorized_client.put(_PROFILE, json={"first_name": "Janet", "last_name": "Smith"})
@@ -189,7 +189,7 @@ class TestUpdateProfile:
         body = resp.json()
         assert body["first_name"] == "Johnny"
 
-    async def test_caretaker_no_profile_returns_404(self, authorized_client: AsyncClient) -> None:
+    async def test_caregiver_no_profile_returns_404(self, authorized_client: AsyncClient) -> None:
         resp = await authorized_client.put(_PROFILE, json={"first_name": "Jane", "last_name": "Doe"})
         assert resp.status_code == 404
 
