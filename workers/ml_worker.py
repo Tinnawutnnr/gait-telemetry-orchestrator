@@ -325,12 +325,17 @@ async def run_worker():
                         window_report_data = create_window_report_json(result, patient_id, current_timestamp)
                         status_label = window_report_data["status"]
 
-                        if status_label == "CALIBRATING":
-                            progress = result.get("progress", "Waiting")
-                            log.info(
-                                f"[{now_bkk_str}] ⚙️ [CALIBRATION] Progress: {progress} | ML Time: {ml_proc_ms:.2f}ms"
-                            )
-                            continue
+                        if res_type == "status":
+                            if status_label == "CALIBRATING":
+                                progress = result.get("progress", "Waiting")
+                                log.info(
+                                    f"[{now_bkk_str}] ⚙️ [CALIBRATION] Progress: {progress} | ML Time: {ml_proc_ms:.2f}ms"
+                                )
+                            elif status_label == "MONITORING":
+                                log.info(
+                                    f"[{now_bkk_str}] 🏁 [CALIBRATION COMPLETE] Transitioning to monitoring | ML Time: {ml_proc_ms:.2f}ms"
+                                )
+                            continue  # Skip DB & Anomaly logic for status updates
 
                         elif status_label == "MONITORING":
                             gait_health = window_report_data.get("gait_health")
