@@ -329,11 +329,13 @@ async def run_worker():
                             if status_label == "CALIBRATING":
                                 progress = result.get("progress", "Waiting")
                                 log.info(
-                                    f"[{now_bkk_str}] ⚙️ [CALIBRATION] Progress: {progress} | ML Time: {ml_proc_ms:.2f}ms"
+                                    f"[{now_bkk_str}] ⚙️ [CALIBRATION] Progress: {progress} "
+                                    f"| ML Time: {ml_proc_ms:.2f}ms"
                                 )
                             elif status_label == "MONITORING":
                                 log.info(
-                                    f"[{now_bkk_str}] 🏁 [CALIBRATION COMPLETE] Transitioning to monitoring | ML Time: {ml_proc_ms:.2f}ms"
+                                    f"[{now_bkk_str}] 🏁 [CALIBRATION COMPLETE] Transitioning to monitoring "
+                                    f"| ML Time: {ml_proc_ms:.2f}ms"
                                 )
                             continue  # Skip DB & Anomaly logic for status updates
 
