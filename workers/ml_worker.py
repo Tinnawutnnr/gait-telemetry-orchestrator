@@ -159,7 +159,7 @@ def _get_patient_contact_info_sync(patient_id):
         try:
             PatientUser = aliased(User)
             CaregiverUser = aliased(User)
-            
+
             result = db.execute(
                 select(PatientUser.username, PatientUser.email, CaregiverUser.email)
                 .select_from(Patient)
@@ -168,12 +168,9 @@ def _get_patient_contact_info_sync(patient_id):
                 .join(CaregiverUser, Caregiver.user_id == CaregiverUser.id)
                 .where(Patient.id == patient_id)
             ).first()
-            
+
             if result:
-                return {
-                    "patient_username": result[0],
-                    "emails": [result[1], result[2]]
-                }
+                return {"patient_username": result[0], "emails": [result[1], result[2]]}
             return {"patient_username": str(patient_id), "emails": []}
         except Exception as e:
             log.error(f"Failed to fetch contact info for patient {patient_id}: {e}")
@@ -379,15 +376,16 @@ async def run_worker():
                                 contact_data = await get_patient_contact_info(patient_id)
                                 patient_username = contact_data["patient_username"]
                                 emails = contact_data["emails"]
-                                
+
                                 if not emails:
                                     emails = [None]
-                                    
+
                                 for email_addr in emails:
                                     try:
                                         email_task = asyncio.create_task(
                                             send_email_with_retry(
-                                                2, 2.0,  # retries, delay_sec
+                                                2,
+                                                2.0,  # retries, delay_sec
                                                 email=email_addr,
                                                 patient_username=patient_username,
                                                 anomaly_score=anomaly_log_data["anomaly_score"],
@@ -401,11 +399,17 @@ async def run_worker():
                                         email_task.add_done_callback(
                                             lambda t, pid=patient_id, e=email_addr: (
                                                 t.exception()
-                                                and log.error(f"[Patient {pid}] Failed to send email to {e} after retries: {t.exception()}")
+                                                and log.error(
+                                                    f"[Patient {pid}] Failed to send email to {e} "
+                                                    f"after retries: {t.exception()}"
+                                                )
                                             )
                                         )
                                     except Exception as e:
-                                        log.error(f"[Patient {patient_id}] Failed to schedule anomaly alert email to {email_addr}: {e}")
+                                        log.error(
+                                            f"[Patient {patient_id}] Failed to schedule anomaly "
+                                            f"alert email to {email_addr}: {e}"
+                                        )
 
                             t0_db = time.perf_counter()
                             await asyncio.to_thread(
