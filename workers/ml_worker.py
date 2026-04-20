@@ -9,9 +9,9 @@ import uuid
 
 from aiokafka import AIOKafkaConsumer
 from sqlalchemy import create_engine, select
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import aliased, sessionmaker
 
-from app.models.orm import AnomalyLog, Patient, User, WindowReport
+from app.models.orm import AnomalyLog, Caregiver, Patient, User, WindowReport
 from app.services.email import send_anomaly_alert_email
 from workers.realtime_processor import GaitSystem
 
@@ -157,21 +157,43 @@ async def get_patient_profile(patient_id):
 def _get_patient_contact_info_sync(patient_id):
     with SessionLocal() as db:
         try:
+            PatientUser = aliased(User)
+            CaregiverUser = aliased(User)
+            
             result = db.execute(
-                select(User.email, User.username)
-                .join(Patient, Patient.user_id == User.id)
+                select(PatientUser.username, PatientUser.email, CaregiverUser.email)
+                .select_from(Patient)
+                .join(PatientUser, Patient.user_id == PatientUser.id)
+                .join(Caregiver, Patient.caregiver_id == Caregiver.id)
+                .join(CaregiverUser, Caregiver.user_id == CaregiverUser.id)
                 .where(Patient.id == patient_id)
             ).first()
+            
             if result:
-                return {"email": result.email, "username": result.username}
-            return None
+                return {
+                    "patient_username": result[0],
+                    "emails": [result[1], result[2]]
+                }
+            return {"patient_username": str(patient_id), "emails": []}
         except Exception as e:
-            log.error(f"Failed to fetch patient contact info for {patient_id}: {e}")
-            return None
+            log.error(f"Failed to fetch contact info for patient {patient_id}: {e}")
+            return {"patient_username": str(patient_id), "emails": []}
 
 
 async def get_patient_contact_info(patient_id):
     return await asyncio.to_thread(_get_patient_contact_info_sync, patient_id)
+
+
+async def send_email_with_retry(max_retries: int, delay_sec: float, *args, **kwargs):
+    for attempt in range(1, max_retries + 1):
+        try:
+            await send_anomaly_alert_email(*args, **kwargs)
+            return
+        except Exception as e:
+            if attempt == max_retries:
+                raise
+            log.warning(f"Email attempt {attempt} failed, retrying in {delay_sec}s: {e}")
+            await asyncio.sleep(delay_sec)
 
 
 def _signal_handler():
@@ -353,31 +375,37 @@ async def run_worker():
                                     f"Cause: {root_cause} | ML Time: {ml_proc_ms:.2f}ms"
                                 )
 
-                                log.info("Anomaly detected! Sending alert email...")
-                                contact_info = await get_patient_contact_info(patient_id)
-                                patient_email = contact_info["email"] if contact_info else None
-                                patient_username = contact_info["username"] if contact_info else str(patient_id)
-                                try:
-                                    email_task = asyncio.create_task(
-                                        send_anomaly_alert_email(
-                                            email=patient_email,
-                                            patient_username=patient_username,
-                                            anomaly_score=anomaly_log_data["anomaly_score"],
-                                            root_cause_feature=anomaly_log_data["root_cause_feature"],
-                                            z_score=anomaly_log_data["z_score"],
-                                            current_val=anomaly_log_data["current_val"],
-                                            normal_ref=anomaly_log_data["normal_ref"],
-                                            timestamp=current_timestamp,
+                                log.info("Anomaly detected! Sending alert emails...")
+                                contact_data = await get_patient_contact_info(patient_id)
+                                patient_username = contact_data["patient_username"]
+                                emails = contact_data["emails"]
+                                
+                                if not emails:
+                                    emails = [None]
+                                    
+                                for email_addr in emails:
+                                    try:
+                                        email_task = asyncio.create_task(
+                                            send_email_with_retry(
+                                                2, 2.0,  # retries, delay_sec
+                                                email=email_addr,
+                                                patient_username=patient_username,
+                                                anomaly_score=anomaly_log_data["anomaly_score"],
+                                                root_cause_feature=anomaly_log_data["root_cause_feature"],
+                                                z_score=anomaly_log_data["z_score"],
+                                                current_val=anomaly_log_data["current_val"],
+                                                normal_ref=anomaly_log_data["normal_ref"],
+                                                timestamp=current_timestamp,
+                                            )
                                         )
-                                    )
-                                    email_task.add_done_callback(
-                                        lambda t, pid=patient_id: (
-                                            t.exception()
-                                            and log.error(f"[Patient {pid}] Failed to send email: {t.exception()}")
+                                        email_task.add_done_callback(
+                                            lambda t, pid=patient_id, e=email_addr: (
+                                                t.exception()
+                                                and log.error(f"[Patient {pid}] Failed to send email to {e} after retries: {t.exception()}")
+                                            )
                                         )
-                                    )
-                                except Exception as e:
-                                    log.error(f"[Patient {patient_id}] Failed to schedule anomaly alert email: {e}")
+                                    except Exception as e:
+                                        log.error(f"[Patient {patient_id}] Failed to schedule anomaly alert email to {email_addr}: {e}")
 
                             t0_db = time.perf_counter()
                             await asyncio.to_thread(
