@@ -25,6 +25,7 @@ def upgrade() -> None:
 
     # Update the role check constraint on users
     op.drop_constraint("ck_users_role", "users", type_="check")
+    op.execute("UPDATE users SET role = 'caregiver' WHERE role = 'caretaker'")
     op.create_check_constraint("ck_users_role", "users", "role IN ('caregiver', 'patient')")
 
     # Rename indexes to match new names
@@ -39,6 +40,7 @@ def downgrade() -> None:
 
     # Revert role check constraint
     op.drop_constraint("ck_users_role", "users", type_="check")
+    op.execute("UPDATE users SET role = 'caretaker' WHERE role = 'caregiver'")
     op.create_check_constraint("ck_users_role", "users", "role IN ('caretaker', 'patient')")
 
     # Revert column rename
