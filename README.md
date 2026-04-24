@@ -59,9 +59,9 @@ HiveMQ Cloud (MQTT Broker)
 └─────────────────────────┘
 
 ┌─────────────────────────┐
-│   Batch Aggregator      │  APScheduler, nightly at 00:01
-│   (workers/batch_       │  WindowReport → Daily → Weekly → Monthly → Yearly
-│    aggregator.py)       │  Cohort benchmark refresh (cohort_schedule.py)
+│   Batch Aggregator      │  APScheduler (Asia/Bangkok timezone)
+│   (workers/batch_       │  00:01 — WindowReport → Daily/Weekly/Monthly/Yearly
+│    aggregator.py)       │  02:00 — Cohort benchmark pre-query (cohort_schedule.py)
 └─────────────────────────┘
 ```
 
@@ -72,7 +72,7 @@ HiveMQ Cloud (MQTT Broker)
 | **API** | `uvicorn app.main:app` (4 workers) | `asyncpg` via SQLAlchemy `AsyncSession` | Read path (queries) |
 | **Ingestion Bridge** | `python -m workers.ingestion_bridge` | `aiomqtt` + `AIOKafkaProducer` | None (HTTP call to API for token resolution) |
 | **ML Worker** | `python -m workers.ml_worker` | `AIOKafkaConsumer` + `asyncio.to_thread` for DB | Write path (inserts) |
-| **Batch Aggregator** | `python -m workers.batch_aggregator` | `APScheduler` (blocking) + sync SQLAlchemy | Read/write (aggregation) |
+| **Batch Aggregator** | `python -m workers.batch_aggregator` | `APScheduler` (blocking, Asia/Bangkok) + sync SQLAlchemy | Read/write (aggregation) |
 
 ### 2.3 Async Boundaries
 
@@ -266,6 +266,8 @@ During calibration, the system collects normal gait windows to establish a per-p
 2. **10 reliable windows** (`CALIBRATION_WINDOWS = 10`) must be accumulated before the LOF model is trained.
 3. During calibration, each window report is saved with `status = "CALIBRATING"` and no anomaly scoring is performed.
 
+The ML worker checks the persisted `status` field on startup to determine whether a patient's `GaitSystem` instance should resume in calibration mode or monitoring mode, avoiding unnecessary re-calibration after restarts when sufficient data already exists.
+
 #### 4.4.2 Model Training
 
 ```python
@@ -337,7 +339,7 @@ The LOF model, scaler, and normal window buffer exist **only in memory** within 
 When an anomaly is detected, the ML worker:
 
 1. Persists a `WindowReport` with `gait_health = "ANOMALY_DETECTED"` and an `AnomalyLog` record containing the root cause feature, z-score, current value, and normal reference value.
-2. Dispatches an alert email to the patient (via `asyncio.create_task`) using the Resend API. The email includes:
+2. Dispatches alert emails (via `asyncio.create_task`) using the Resend API to both the **patient** and their **linked caregiver** (if one exists). The contact resolution function (`_get_patient_contact_info_sync`) fetches both the patient's email and the caregiver's email from the database in a single query. Each email includes:
    - A severity badge based on the percentage deviation from normal: **Slight Change** (<5%, yellow), **Noticeable Change** (5-10%, orange), **Significant Change** (&ge;10%, red).
    - The human-readable feature name (e.g., "Leg Swing Speed" for `max_gyr`), today's value, and the patient's normal average.
 
@@ -483,6 +485,7 @@ The schema is managed through 14 sequential Alembic migrations. Key migrations i
 - **`157ad1d052bb`**: Introduced declarative range partitioning. Renamed original tables, recreated them as partitioned, migrated existing data, and seeded initial monthly partitions. This migration is the most complex, involving raw SQL DDL for partition creation.
 - **`242b98f29d3b`**: Migrated `users.email` from `VARCHAR` to `CITEXT` with duplicate detection and lowercase normalization.
 - **`ed0ae94d0ecb`**: Added `avg_cadence` to all aggregation tables and created the `cohort_benchmark_data` table.
+- **`a1b2c3d4e5f6`**: Renamed the `caretakers` table to `caregivers` and updated the `users.role` CHECK constraint value from `'caretaker'` to `'caregiver'`. All existing role values in the `users` table were migrated via an `UPDATE` statement.
 
 Alembic runs automatically during container startup via `docker-entrypoint.sh` (unless `SKIP_MIGRATIONS=true`). In CI, migrations run against a dedicated test database to validate schema compatibility before merge.
 
